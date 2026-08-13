@@ -4,6 +4,13 @@
 
 ---
 
+![Heatmap operadora x motivo](docs/img/heatmap.png)
+
+*Reclamações por operadora e motivo. Velocidade e cobrança concentram o volume em todas as
+marcas — o padrão é do setor, não de uma empresa.*
+
+---
+
 ## Por que RFM importa para um ISP regional
 
 Churn em ISP não acontece de uma vez — existe um padrão comportamental antes do cancelamento: o cliente começa a atrasar boletos, para de pagar e só então cancela formalmente. A análise de **Recência**, **Frequência** e **Valor Monetário** dos pagamentos captura esse padrão *antes* do cancelamento, permitindo ação preventiva.
