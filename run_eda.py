@@ -22,6 +22,7 @@ Saídas:
 
 import io
 import random
+import sys
 import datetime
 import warnings
 from pathlib import Path
@@ -31,6 +32,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from src.theme import SEQ, finish, save  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
@@ -284,24 +288,22 @@ fig = px.bar(
     motivo_cnt, x="Pct", y="Motivo", orientation="h",
     text=motivo_cnt["Pct"].astype(str) + "%",
     color="Pct", color_continuous_scale="Blues",
-    title=f"<b>H1: Distribuição por Motivo de Reclamação</b><br><sup>Motivo #1: {top1_motivo} ({top1_pct}%)</sup>",
     labels={"Pct": "% do total", "Motivo": "Motivo"},
-    template="plotly_white",
 )
 fig.update_traces(textposition="outside")
-fig.update_layout(yaxis={"categoryorder": "total ascending"}, height=380,
-                  coloraxis_showscale=False)
-fig.write_html(str(OUTPUTS / "motivos.html"), include_plotlyjs="cdn")
+fig.update_layout(yaxis={"categoryorder": "total ascending"}, coloraxis_showscale=False)
+finish(fig, "H1 · Distribuição por motivo de reclamação",
+       f"motivo mais frequente: {top1_motivo} ({top1_pct}% do total)", height=420)
+save(fig, OUTPUTS, "motivos")
 print(f"  OK motivos.html | H1: {'CONFIRMADA' if h1_ok else 'REFUTADA'} ('{top1_motivo}' = {top1_pct}%)")
 
 # 5.2 Status (pie chart)
 status_cnt = df["Status"].value_counts().reset_index()
 status_cnt.columns = ["Status", "Total"]
 fig = px.pie(status_cnt, values="Total", names="Status", hole=0.45,
-             title="<b>Status das Reclamações</b>",
-             color_discrete_sequence=["#27AE60","#E74C3C","#F39C12"],
-             template="plotly_white")
-fig.write_html(str(OUTPUTS / "status_pie.html"), include_plotlyjs="cdn")
+             color_discrete_sequence=["#0F766E", "#B91C1C", "#B45309"])
+finish(fig, "Situação das reclamações", "participação de cada status no total", height=400)
+save(fig, OUTPUTS, "status_pie")
 print("  OK status_pie.html")
 
 # 5.3 Operadoras: volume + taxa de resolução (H2 + H4)
@@ -327,19 +329,21 @@ fig.add_trace(go.Bar(x=op["Operadora"], y=op["Taxa_Res"],
     text=op["Taxa_Res"].astype(str) + "%", textposition="outside", name="Taxa Res."), row=1, col=2)
 fig.add_hline(y=op["Taxa_Res"].mean(), row=1, col=2, line_dash="dash", line_color="grey",
               annotation_text=f"Media: {op['Taxa_Res'].mean():.1f}%", annotation_position="right")
-fig.update_layout(title="<b>Reclamações por Operadora</b>", template="plotly_white",
-                  height=430, showlegend=False)
-fig.write_html(str(OUTPUTS / "operadoras.html"), include_plotlyjs="cdn")
+fig.update_layout(showlegend=False)
+finish(fig, "Reclamações por operadora",
+       "volume bruto à esquerda, qualidade do atendimento à direita — as duas leituras discordam",
+       height=470)
+save(fig, OUTPUTS, "operadoras", png=True)
 print(f"  OK operadoras.html | H2: {'CONFIRMADA' if h2_ok else 'REFUTADA'} | H4: {'CONFIRMADA' if h4_ok else 'REFUTADA'}")
 
 # 5.4 Heatmap Operadora × Motivo
 hm = df.groupby(["Operadora", "Motivo"]).size().unstack(fill_value=0)
-fig = px.imshow(hm, text_auto=True, color_continuous_scale="Blues", aspect="auto",
-                title="<b>Heatmap: Reclamações por Operadora × Motivo</b>",
-                labels=dict(x="Motivo", y="Operadora", color="Nº"),
-                template="plotly_white")
-fig.update_layout(height=380)
-fig.write_html(str(OUTPUTS / "heatmap_op_motivo.html"), include_plotlyjs="cdn")
+fig = px.imshow(hm, text_auto=True, color_continuous_scale=SEQ, aspect="auto",
+                labels=dict(x="Motivo", y="Operadora", color="Reclamações"))
+finish(fig, "Operadora × motivo",
+       "volume de reclamações no cruzamento — a cor acompanha o número, não o substitui",
+       height=460)
+save(fig, OUTPUTS, "heatmap_op_motivo", png=True)
 print("  OK heatmap_op_motivo.html")
 
 # 5.5 Top 15 estados
@@ -362,12 +366,12 @@ uf_df["Regiao"] = uf_df["UF"].map(REGIAO).fillna("Outros")
 fig = px.bar(uf_df, x="UF", y="Total",
              color="Regiao", color_discrete_map=COR_REG,
              text="Total",
-             title="<b>H5: Top 15 Estados — Volume de Reclamações</b>",
-             labels={"Total": "Reclamações", "UF": "Estado"},
-             template="plotly_white")
+             labels={"Total": "Reclamações", "UF": "Estado"})
 fig.update_traces(textposition="outside")
-fig.update_layout(height=440)
-fig.write_html(str(OUTPUTS / "top15_estados.html"), include_plotlyjs="cdn")
+finish(fig, "H5 · Top 15 estados por volume",
+       "cor por região · sem denominador populacional, o ranking mede população tanto quanto serviço",
+       height=460)
+save(fig, OUTPUTS, "top15_estados")
 print("  OK top15_estados.html")
 
 # 5.6 Série temporal mensal
@@ -378,10 +382,10 @@ fig = px.line(ts, x="AnoMes", y="Total", color="Operadora",
               markers=True,
               title="<b>Evolução Mensal de Reclamações por Operadora</b>",
               labels={"AnoMes": "Mes", "Total": "Reclamações"},
-              color_discrete_map={k.title(): v for k, v in CORES.items()},
-              template="plotly_white")
-fig.update_layout(height=420)
-fig.write_html(str(OUTPUTS / "serie_temporal.html"), include_plotlyjs="cdn")
+              color_discrete_map={k.title(): v for k, v in CORES.items()})
+finish(fig, "Evolução mensal por operadora",
+       "cor fixa por marca, a mesma em todos os gráficos", height=440)
+save(fig, OUTPUTS, "serie_temporal")
 print("  OK serie_temporal.html")
 
 # 5.7 Sazonalidade por trimestre (H3)
@@ -391,12 +395,11 @@ pico_trim = trim_df.loc[trim_df["Total"].idxmax(), "Trimestre"]
 h3_ok = pico_trim == "T1"
 
 fig = px.bar(trim_df, x="Trimestre", y="Total", text="Total",
-             color="Total", color_continuous_scale="OrRd",
-             title=f"<b>H3: Reclamações por Trimestre — Sazonalidade</b><br><sup>Pico: {pico_trim}</sup>",
-             template="plotly_white")
+             color="Total", color_continuous_scale=SEQ)
 fig.update_traces(textposition="outside")
-fig.update_layout(height=380, coloraxis_showscale=False)
-fig.write_html(str(OUTPUTS / "sazonalidade_trimestre.html"), include_plotlyjs="cdn")
+fig.update_layout(coloraxis_showscale=False)
+finish(fig, "H3 · Sazonalidade por trimestre", f"pico no {pico_trim}", height=400)
+save(fig, OUTPUTS, "sazonalidade_trimestre")
 print(f"  OK sazonalidade_trimestre.html | H3: {'CONFIRMADA' if h3_ok else 'REFUTADA'} (pico em {pico_trim})")
 
 # --------------------------------------------------------------------------

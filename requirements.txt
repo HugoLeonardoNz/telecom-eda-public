@@ -7,3 +7,7 @@ scikit-learn==1.4.2
 jupyter==1.0.0
 ipykernel==6.29.4
 openpyxl==3.1.2
+
+# exportar as figuras como PNG (docs/img). Sem ele o script grava so o HTML
+# e avisa; nada quebra.
+kaleido==0.2.1
