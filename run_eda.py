@@ -368,8 +368,11 @@ fig = px.bar(uf_df, x="UF", y="Total",
              text="Total",
              labels={"Total": "Reclamações", "UF": "Estado"})
 fig.update_traces(textposition="outside")
+# H5 nao recebe veredito: UF_DIST E participacao populacional escrita a mao, entao
+# correlacionar volume com populacao mediria o gerador. Fica como descritivo, e o
+# subtitulo diz o que falta para a pergunta virar analise.
 finish(fig, "H5 · Top 15 estados por volume",
-       "cor por região · sem denominador populacional, o ranking mede população tanto quanto serviço",
+       "cor por região · sem denominador de assinantes, o ranking mede tamanho de estado, não qualidade de serviço",
        height=460)
 save(fig, OUTPUTS, "top15_estados")
 print("  OK top15_estados.html")

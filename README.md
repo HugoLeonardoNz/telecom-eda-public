@@ -19,7 +19,7 @@ do mercado, e o que a base de uma operadora diz sobre quem está prestes a sair.
 
 | Análise | Pergunta | Entrada | Saída |
 |---|---|---|---|
-| **EDA ANATEL** (`run_eda.py`) | O que gera reclamação no setor, e o padrão é de mercado ou de uma marca? | CSV bruto no formato real da ANATEL — latin-1, `;`, duplicatas, nulos implícitos | 7 gráficos + relatório de qualidade do dado + 5 hipóteses testadas |
+| **EDA ANATEL** (`run_eda.py`) | O que gera reclamação no setor, e o padrão é de mercado ou de uma marca? | CSV bruto no formato real da ANATEL — latin-1, `;`, duplicatas, nulos implícitos | 7 gráficos + relatório de qualidade do dado + 4 hipóteses testadas e 1 declarada não-testável |
 | **RFM** (`notebooks/rfm_analysis.ipynb`) | Quem, na base, está a caminho do cancelamento? | 300 contratos · ~4.2 mil boletos | 6 segmentos com ação recomendada e MRR em risco |
 
 As duas rodam sozinhas, com dados sintéticos versionados. Nenhuma depende de
@@ -57,7 +57,21 @@ refutada. Uma hipótese que só pode dar certo não é hipótese.
 | H2 | As 3 maiores operadoras concentram mais de 70% do volume | **Confirmada** — 86,0% |
 | H3 | Há sazonalidade, com pico no primeiro trimestre | **Confirmada** — pico em T1 |
 | H4 | A taxa de resolução varia mais de 20pp entre operadoras | **Refutada** — o gap é de 4,9pp |
-| H5 | O volume por estado acompanha a população | Ver `top15_estados.html` |
+| H5 | O volume por estado acompanha a população | **Não testável aqui** — ver abaixo |
+
+**H5 não recebe veredito, e isso é de propósito.** O gerador sorteia a UF de cada
+reclamação a partir de `UF_DIST`, que é — por construção — participação populacional:
+SP 22%, RJ 12%, MG 10%. Rodar a correlação entre volume estadual e população devolveria
+"confirmada" com r perto de 1, e o número mediria a linha de código que escreveu os
+pesos, não o setor. É o mesmo defeito que este portfólio removeu do
+[churn-predictor](https://github.com/HugoLeonardoNz/churn-predictor), onde as variáveis
+eram sorteadas condicionadas ao próprio rótulo e a AUC saía em 0,996.
+
+Para testar H5 de verdade seria preciso um denominador externo — população ou base de
+assinantes por UF — e aí a pergunta útil deixa de ser "qual estado reclama mais" e passa
+a ser "qual estado reclama mais **por assinante**". É exatamente essa a coluna que o
+[telecom-powerbi-public](https://github.com/HugoLeonardoNz/telecom-powerbi-public) traz,
+e lá ela inverte o ranking: a SERCOMTEL reclama 4x mais por assinante que a CLARO.
 
 H4 é a mais útil das cinco justamente por ter sido refutada: a intuição de que
 "operadora grande atende pior" não se sustenta no dado — todas resolvem em
@@ -141,13 +155,23 @@ telecom-eda-public/
 ## Fonte dos dados
 
 **EDA ANATEL:** CSV sintético que reproduz o formato e os defeitos do arquivo
-público de reclamações de consumidores (serviço SCM). Serve para demonstrar
-limpeza e análise — os números não devem ser citados como fato de mercado.
+público de reclamações de consumidores (serviço SCM): latin-1, `;`, duplicatas,
+nulos implícitos. Serve para demonstrar limpeza e análise — os números não devem
+ser citados como fato de mercado. **1.998 reclamações, 88,3% de resolução.**
 
-**RFM:** base FiberNet ISP (sintética), o mesmo universo de
-[`sql-analytics-pack`](https://github.com/HugoLeonardoNz/sql-analytics-pack) e
-[`churn-predictor`](https://github.com/HugoLeonardoNz/churn-predictor) —
-300 contratos · 5 cidades da RMBH · 4 planos de fibra · jan/2022 a out/2024.
+> **Há dois projetos "ANATEL" neste portfólio, e eles não compartilham base.** Este
+> aqui gera 1.998 registros com 8 motivos para exercitar limpeza de CSV sujo; o
+> [telecom-powerbi-public](https://github.com/HugoLeonardoNz/telecom-powerbi-public)
+> gera 8.000 com 11 categorias, star schema e denominador de assinantes, para
+> exercitar modelagem dimensional. Geradores diferentes, propósitos diferentes —
+> por isso a taxa de resolução é 88,3% aqui e 71,9% lá. Um não confere o outro.
+
+**RFM:** base FiberNet ISP (sintética) — 300 contratos · 5 cidades da RMBH ·
+4 planos de fibra · jan/2022 a out/2024. Mesma **escala e recorte** do
+[`sql-analytics-pack`](https://github.com/HugoLeonardoNz/sql-analytics-pack), mas
+não a mesma tabela: cada projeto gera a sua. O
+[`churn-predictor`](https://github.com/HugoLeonardoNz/churn-predictor) trabalha em
+outra escala (15.000 contratos, 5 regiões).
 
 ---
 
