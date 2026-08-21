@@ -1,0 +1,28 @@
+name: testes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  achados:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements-dev.txt
+
+      # Amarra cada hipotese do README ao veredito que o script imprime.
+      # H5 tem teste proprio: ele falha se ela GANHAR veredito, porque os pesos
+      # por estado do gerador sao participacao populacional e confirmar mediria
+      # o gerador.
+      - name: Testes dos achados publicados
+        run: pytest tests/ -v

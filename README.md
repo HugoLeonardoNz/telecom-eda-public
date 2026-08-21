@@ -5,6 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-pandas%20%2B%20plotly-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![Análises](https://img.shields.io/badge/Análises-EDA%20ANATEL%20%2B%20RFM-2563EB?style=for-the-badge)
 ![Dados](https://img.shields.io/badge/Dados-sintéticos-10b981?style=for-the-badge)
+![testes](https://github.com/HugoLeonardoNz/telecom-eda-public/actions/workflows/tests.yml/badge.svg)
 
 **Duas análises sobre o mesmo setor, de dois ângulos: o que o consumidor reclama
 do mercado, e o que a base de uma operadora diz sobre quem está prestes a sair.**
@@ -176,3 +177,27 @@ outra escala (15.000 contratos, 5 regiões).
 ---
 
 *Hugo Leonardo · Analista de Dados Pleno — Speed Fibra*
+
+---
+
+## Os achados publicados são testados
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ -v
+```
+
+Número em README não executa — e foi exatamente por isso que este portfólio deixou
+texto e código divergirem em silêncio mais de uma vez. Num dos repositórios, um
+comentário explicava que 87,0% era número inventado e o gráfico sessenta linhas
+abaixo plotava 87,0%. Em outro, o texto dizia "São Paulo tem a melhor taxa do país"
+enquanto o CSV ao lado registrava que era o 5º.
+
+Cada hipótese do README vira asserção sobre o que o `run_eda.py` imprime: H1 em
+35,4%, H2 em 86,0%, H3 com pico em T1, H4 refutada em 4,9pp. **H5 tem o teste
+invertido** — ele falha se ela GANHAR veredito, porque `UF_DIST` é participação
+populacional escrita à mão e confirmar mediria o gerador, não o setor.
+
+Se o gerador, a fonte ou a limpeza mudarem, o teste falha e obriga a atualizar o
+texto. É a mesma regra que vale para dado: **ou se deriva de uma fonte só, ou se
+escreve um teste que falha quando as duas divergirem.**

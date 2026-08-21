@@ -1,0 +1,3 @@
+# Ambiente completo: analise + testes dos achados publicados.
+-r requirements.txt
+pytest>=8.0.0
