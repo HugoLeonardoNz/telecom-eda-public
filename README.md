@@ -12,6 +12,8 @@ do mercado, e o que a base de uma operadora diz sobre quem está prestes a sair.
 
 </div>
 
+> Peça do portfólio de **Hugo Leonardo**, Analista de Dados — os oito projetos, com o contexto de cada um, estão em **[hugoleonardonz.github.io/portfolio](https://hugoleonardonz.github.io/portfolio/)**.
+
 ![Operadora × motivo](docs/img/heatmap_op_motivo.png)
 
 ---
