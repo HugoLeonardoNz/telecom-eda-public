@@ -32,12 +32,26 @@ RAIZ = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 @pytest.fixture(scope="session")
 def saida():
-    """Roda a EDA e devolve o que ela imprime."""
+    """Roda a EDA e devolve o que ela imprime.
+
+    Sem `check=True`: com ele, uma falha do script virava um
+    CalledProcessError seco, e o traceback do pytest mostrava as entranhas do
+    `subprocess.py` em vez da linha que quebrou. Foi exatamente o que
+    aconteceu na primeira execucao em CI — treze erros identicos, nenhum
+    dizendo o motivo. Aqui a saida do script entra na mensagem da falha.
+    """
     r = subprocess.run(
         [sys.executable, "run_eda.py"],
-        cwd=RAIZ, check=True, capture_output=True, text=True,
+        cwd=RAIZ, check=False, capture_output=True, text=True,
         encoding="utf-8", errors="replace",
     )
+    if r.returncode != 0:
+        pytest.fail(
+            "run_eda.py saiu com codigo %d\n\n--- stdout ---\n%s\n--- stderr ---\n%s"
+            % (r.returncode, r.stdout[-3000:], r.stderr[-3000:]),
+            pytrace=False,
+        )
+
     return r.stdout
 
 
