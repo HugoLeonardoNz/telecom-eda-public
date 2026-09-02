@@ -6,7 +6,6 @@ Módulo de cálculo de Recência, Frequência e Valor Monetário para segmentaç
 from __future__ import annotations
 
 import pandas as pd
-import numpy as np
 from datetime import date
 
 

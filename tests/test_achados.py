@@ -30,7 +30,6 @@ Estes testam três coisas diferentes:
 import os
 import sys
 
-import pandas as pd
 import pytest
 
 RAIZ = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
