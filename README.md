@@ -12,7 +12,7 @@ do mercado, e o que a base de uma operadora diz sobre quem está prestes a sair.
 
 </div>
 
-> Peça do portfólio de **Hugo Leonardo**, Analista de Dados — cada projeto, com o contexto de por que foi feito, está em **[hugoleonardonz.github.io/portfolio](https://hugoleonardonz.github.io/portfolio/)**.
+> Peça do portfólio de **Hugo Nazário**, Analista de Dados — cada projeto, com o contexto de por que foi feito, está em **[hugoleonardonz.github.io/portfolio](https://hugoleonardonz.github.io/portfolio/)**.
 
 ![Solicitações por marca](docs/img/marcas.png)
 
@@ -207,7 +207,7 @@ outra escala (15.000 contratos, 5 regiões).
 
 ---
 
-*Hugo Leonardo · Analista de Dados Pleno — Speed Fibra*
+*Hugo Nazário · Analista de Dados Pleno — Speed Fibra*
 
 ---
 
