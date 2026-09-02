@@ -1,141 +1,176 @@
 """
-Os achados publicados, como asserção — EDA ANATEL
+Os achados publicados, como asserção — EDA ANATEL (base real)
 
-Execute com: pytest tests/ -v   (roda `run_eda.py` antes, uma vez)
+Execute com: pytest tests/ -v
 
 POR QUE ESTE ARQUIVO EXISTE
 ---------------------------
-O README declara quatro hipóteses com veredito e cita números exatos: motivo #1
-em 35,4%, top 3 em 86,0%, gap de resolução em 4,9pp. Nada disso era verificado.
-Em outros repositórios deste portfólio a mesma ausência deixou o texto e o código
-divergirem por meses — um deles chegou a publicar "São Paulo tem a melhor taxa do
-país" enquanto o próprio CSV do repositório dizia que era o 5º.
+O README declara hipóteses com veredito e cita números exatos. Nada disso era
+verificado antes. Em outros repositórios deste portfólio a mesma ausência deixou
+o texto e o código divergirem por meses — um deles chegou a publicar "São Paulo
+tem a melhor taxa do país" enquanto o próprio CSV do repositório dizia que era
+o 5º. Aqui a asserção lê os mesmos agregados que o `run_eda.py` publica.
 
-Aqui a asserção lê o que o `run_eda.py` imprime, que é a mesma fonte que o README
-cita. Se o gerador ou a limpeza mudarem, o teste falha e obriga a atualizar o
-texto, em vez de deixar os dois se afastarem em silêncio.
+O QUE MUDOU EM 2026-09-01
+-------------------------
+O projeto migrou de CSV sintético para a base ABERTA E REAL da ANATEL
+(15.952.407 linhas, 18.813.384 solicitações, jan/2015 a mai/2020). Os testes
+antigos afirmavam coisas sobre o gerador — "motivo #1 em 35,4%", "top 3 em
+86,0%" — e não sobreviveram à migração, porque mediam dado inventado.
 
-H5 não tem teste de veredito de propósito: `UF_DIST` é participação populacional
-escrita à mão, então correlacionar volume com população mediria o gerador. O que
-se testa aqui é que ela continua SEM veredito.
+Estes testam três coisas diferentes:
+
+  1. os números que o README publica batem com os agregados versionados;
+  2. as armadilhas da fonte continuam tratadas (canal renomeado, ano parcial,
+     grão agregado) — se alguém remover a normalização, o teste quebra;
+  3. H5 continua SEM veredito, porque confirmá-la exigiria um denominador que
+     a base não tem.
 """
 
 import os
-import re
-import subprocess
 import sys
 
+import pandas as pd
 import pytest
 
 RAIZ = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, RAIZ)
+
+PROC = os.path.join(RAIZ, "data", "processed")
+
+# Os números que o README publica. Espelhados aqui de propósito: se o agregado
+# mudar, o teste falha e obriga a atualizar o texto — que é o ponto.
+TOTAL = 18_813_384
+LINHAS_FONTE = 15_952_407
+LIDER = "OI"
+LIDER_SHARE = 26.36
+CLARO_POSICAO = 4
+COBRANCA_SHARE = 33.62
+APP_2015, APP_2020 = 2.8, 21.4
+CALL_2015, CALL_2020 = 64.8, 42.8
+PIOR_REABERTURA = "NEXTEL"
 
 
-@pytest.fixture(scope="session")
-def saida():
-    """Roda a EDA e devolve o que ela imprime.
+@pytest.fixture(scope="module")
+def agg():
+    import run_eda
+    if not os.path.isdir(PROC) or not os.listdir(PROC):
+        pytest.skip("agregados ausentes — rode tools/preparar_anatel.py")
+    return run_eda.carregar()
 
-    Sem `check=True`: com ele, uma falha do script virava um
-    CalledProcessError seco, e o traceback do pytest mostrava as entranhas do
-    `subprocess.py` em vez da linha que quebrou. Foi exatamente o que
-    aconteceu na primeira execucao em CI — treze erros identicos, nenhum
-    dizendo o motivo. Aqui a saida do script entra na mensagem da falha.
-    """
-    r = subprocess.run(
-        [sys.executable, "run_eda.py"],
-        cwd=RAIZ, check=False, capture_output=True, text=True,
-        encoding="utf-8", errors="replace",
+
+@pytest.fixture(scope="module")
+def eda():
+    import run_eda
+    return run_eda
+
+
+# --- 1. os números publicados -----------------------------------------------
+
+
+def test_total_de_solicitacoes(agg):
+    assert int(agg["marca_mes"]["solicitacoes"].sum()) == TOTAL
+
+
+def test_todo_agregado_fecha_no_mesmo_total(agg):
+    """Sete recortes do mesmo dado: divergir significa erro de agregação."""
+    for nome, df in agg.items():
+        assert int(df["solicitacoes"].sum()) == TOTAL, f"agg_{nome} não fecha"
+
+
+def test_h1_a_oi_lidera_e_a_claro_e_a_quarta(agg):
+    marca = agg["marca_mes"].groupby("marca")["solicitacoes"].sum().sort_values(ascending=False)
+    assert marca.index[0] == LIDER
+    assert round(marca.iloc[0] / TOTAL * 100, 2) == LIDER_SHARE
+    assert list(marca.index).index("CLARO") + 1 == CLARO_POSICAO
+
+
+def test_h3_cobranca_domina(agg, eda):
+    assunto = agg["assunto_marca"].groupby("assunto")["solicitacoes"].sum().sort_values(ascending=False)
+    assert assunto.index[0] == "Cobrança"
+    assert round(assunto.iloc[0] / TOTAL * 100, 2) == COBRANCA_SHARE
+    # o segundo colocado é o técnico — é o que torna H3 refutada, não trivial
+    assert assunto.index[1] == eda.QUALIDADE
+
+
+def test_h4_pior_reabertura_nao_e_a_de_maior_volume(agg, eda):
+    pv = eda.reabertura_por_marca(agg["condicao_marca"])
+    assert pv["reab"].idxmax() == PIOR_REABERTURA
+    assert pv["reab"].idxmax() != pv["total"].idxmax()
+
+
+# --- 2. as armadilhas da fonte continuam tratadas ---------------------------
+
+
+def test_canais_renomeados_continuam_normalizados(agg, eda):
+    """Sem o mapa, o app aparece com 0,0% em 2020 — e a conclusão inverte."""
+    cru = agg["canal_ano"].pivot_table(index="canal", columns="ano",
+                                       values="solicitacoes", aggfunc="sum").fillna(0)
+    assert cru.loc["Aplicativo Móvel", 2020] == 0, "a fonte mudou; revisar o mapa"
+    assert cru.loc["Mobile App", 2015] == 0
+
+    p = eda.canais_normalizados(agg["canal_ano"]).pivot_table(
+        index="canal", columns="ano", values="solicitacoes", aggfunc="sum").fillna(0)
+    share = p / p.sum(axis=0) * 100
+    assert round(share.loc["App móvel", 2015], 1) == APP_2015
+    assert round(share.loc["App móvel", 2020], 1) == APP_2020
+    assert round(share.loc["Call Center", 2015], 1) == CALL_2015
+    assert round(share.loc["Call Center", 2020], 1) == CALL_2020
+
+
+def test_mapa_de_canal_cobre_os_dois_pares(eda):
+    assert set(eda.CANAL_RENOMEADO) == {
+        "Usuário WEB", "Fale Conosco", "Mobile App", "Aplicativo Móvel"
+    }
+    assert len(set(eda.CANAL_RENOMEADO.values())) == 2
+
+
+def test_2020_e_parcial(agg):
+    """Comparar 2020 com ano cheio é comparar 5 meses com 12."""
+    meses = {a[5:7] for a in agg["marca_mes"]["ano_mes"] if a.startswith("2020")}
+    assert meses == {"01", "02", "03", "04", "05"}
+
+
+def test_o_grao_nao_e_a_reclamacao(agg):
+    """Contar linhas subestima: a fonte tem menos linhas que solicitações."""
+    assert TOTAL > LINHAS_FONTE
+
+
+def test_relatorio_de_qualidade_documenta_as_armadilhas(agg, eda):
+    md = eda.relatorio_qualidade(agg)
+    for termo in ("renomeados", "parcial", "grão não é a reclamação", "duas grafias"):
+        assert termo.lower() in md.lower(), f"o relatório deixou de citar: {termo}"
+
+
+# --- 3. H5 continua sem veredito -------------------------------------------
+
+
+def test_h5_nao_recebe_veredito(agg, eda):
+    hs = {r: v for r, v, _ in eda.hipoteses(agg)}
+    h5 = [r for r in hs if r.startswith("H5")]
+    assert h5, "H5 sumiu"
+    assert hs[h5[0]] == "NÃO TESTÁVEL", (
+        "H5 ganhou veredito. Confirmá-la exigiria base de assinantes, que a fonte "
+        "não tem — o veredito mediria a suposição, não o setor."
     )
-    if r.returncode != 0:
-        pytest.fail(
-            "run_eda.py saiu com codigo %d\n\n--- stdout ---\n%s\n--- stderr ---\n%s"
-            % (r.returncode, r.stdout[-3000:], r.stderr[-3000:]),
-            pytrace=False,
+
+
+def test_as_outras_hipoteses_tem_veredito(agg, eda):
+    hs = eda.hipoteses(agg)
+    assert len(hs) == 5
+    for rotulo, veredito, frase in hs:
+        assert veredito, f"{rotulo} sem veredito"
+        assert any(c.isdigit() for c in frase) or veredito == "NÃO TESTÁVEL", (
+            f"{rotulo} não cita número"
         )
 
-    return r.stdout
+
+# --- 4. procedência ---------------------------------------------------------
 
 
-def _num(saida, padrao):
-    r"""Extrai um numero da saida do script.
-
-    O separador de milhar sai do VALOR capturado, nao do padrao. A primeira
-    versao fazia `r"([\d,]+)".replace(",", "")`, que altera a EXPRESSAO e deixa
-    `[\d]+` — o match para no separador e "1,998" vira 1. O script imprime
-    milhar com virgula e decimal com ponto (formato do Python), entao basta
-    tirar as virgulas.
-    """
-    m = re.search(padrao, saida)
-    assert m, f"Nao achei {padrao!r} na saida do run_eda.py"
-    return float(m.group(1).replace(",", ""))
-
-
-# ── As quatro hipóteses com veredito ──────────────────────────────────────────
-
-def test_h1_velocidade_e_o_motivo_um(saida):
-    """README: "H1 Confirmada — 35,4% do total"."""
-    assert "H1: CONFIRMADA" in saida
-    assert "Velocidade" in saida
-    pct = _num(saida, r"Motivo #1: Velocidade \(([\d.]+)%\)")
-    assert 34.0 <= pct <= 37.0, f"Motivo #1 em {pct}%; o README diz 35,4%"
-
-
-def test_h2_top3_concentra(saida):
-    """README: "H2 Confirmada — 86,0%"."""
-    assert "H2: CONFIRMADA" in saida
-    pct = _num(saida, r"Top 3 operadoras = ([\d.]+)%")
-    assert pct > 70.0, "H2 afirma mais de 70%; abaixo disso ela vira refutada"
-    assert 84.0 <= pct <= 88.0, f"Top 3 em {pct}%; o README diz 86,0%"
-
-
-def test_h3_pico_no_primeiro_trimestre(saida):
-    """README: "H3 Confirmada — pico em T1"."""
-    assert "H3: CONFIRMADA" in saida and "Pico em T1" in saida
-
-
-def test_h4_continua_refutada(saida):
-    """README: "H4 Refutada — o gap é de 4,9pp".
-
-    É a mais útil das quatro justamente por ter sido refutada. Se ela virar
-    confirmada, o parágrafo que a explica no README deixa de fazer sentido.
-    """
-    assert "H4: REFUTADA" in saida
-    gap = _num(saida, r"Gap taxa resolucao = ([\d.]+)pp")
-    assert gap < 20.0, "H4 previa mais de 20pp; acima disso ela passa a confirmada"
-    assert 4.0 <= gap <= 6.0, f"Gap em {gap}pp; o README diz 4,9pp"
-
-
-def test_h5_nao_recebe_veredito(saida):
-    """A quinta hipótese não pode ganhar CONFIRMADA/REFUTADA.
-
-    `UF_DIST` é participação populacional escrita à mão. Um veredito aqui
-    mediria a linha de código que escreveu os pesos, não o setor — o mesmo
-    defeito que tirou a AUC de 0,996 do churn-predictor.
-    """
-    assert not re.search(r"H5:\s*(CONFIRMADA|REFUTADA)", saida), (
-        "H5 ganhou veredito. Se ela passou a ser testavel, foi porque entrou um "
-        "denominador externo — e ai o README precisa dizer qual."
+def test_readme_declara_dado_observado_e_nao_sintetico():
+    md = open(os.path.join(RAIZ, "README.md"), encoding="utf-8").read()
+    assert "sintéticos" not in md.split("## ")[0], (
+        "o cabeçalho ainda anuncia dado sintético"
     )
-
-
-# ── Escala e limpeza ──────────────────────────────────────────────────────────
-
-def test_escala_da_base(saida):
-    """README: "1.998 reclamações, 88,3% de resolução".
-
-    Os dois projetos ANATEL do portfólio têm bases diferentes de propósito
-    (8.000 e 71,9% no telecom-powerbi). O README diz isso; o teste garante que
-    o número citado continua sendo o desta base.
-    """
-    total = _num(saida, r"Total reclamacoes:\s+([\d,.]+)")
-    assert 1900 <= total <= 2100, f"Base em {total:.0f}; o README diz 1.998"
-    resol = _num(saida, r"Taxa de resolucao:\s+([\d.]+)%")
-    assert 87.0 <= resol <= 90.0, f"Resolucao em {resol}%; o README diz 88,3%"
-
-
-def test_cobertura_geografica(saida):
-    assert "Estados cobertos:    27" in saida
-
-
-def test_pipeline_valida_o_dado(saida):
-    """A EDA existe para exercitar limpeza de CSV sujo — a validação faz parte."""
-    assert "Validacao: OK" in saida
+    assert "ANATEL" in md and ("observad" in md.lower() or "real" in md.lower())

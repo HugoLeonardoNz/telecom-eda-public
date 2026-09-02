@@ -4,7 +4,7 @@
 
 ![Python](https://img.shields.io/badge/Python-pandas%20%2B%20plotly-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![Análises](https://img.shields.io/badge/Análises-EDA%20ANATEL%20%2B%20RFM-2563EB?style=for-the-badge)
-![Dados](https://img.shields.io/badge/Dados-sintéticos-10b981?style=for-the-badge)
+![Dados](https://img.shields.io/badge/Dados-ANATEL%20observado%20(15,9%20M%20linhas)-0F5F52?style=for-the-badge)
 ![testes](https://github.com/HugoLeonardoNz/telecom-eda-public/actions/workflows/tests.yml/badge.svg)
 
 **Duas análises sobre o mesmo setor, de dois ângulos: o que o consumidor reclama
@@ -14,7 +14,7 @@ do mercado, e o que a base de uma operadora diz sobre quem está prestes a sair.
 
 > Peça do portfólio de **Hugo Leonardo**, Analista de Dados — os oito projetos, com o contexto de cada um, estão em **[hugoleonardonz.github.io/portfolio](https://hugoleonardonz.github.io/portfolio/)**.
 
-![Operadora × motivo](docs/img/heatmap_op_motivo.png)
+![Solicitações por marca](docs/img/marcas.png)
 
 ---
 
@@ -22,65 +22,77 @@ do mercado, e o que a base de uma operadora diz sobre quem está prestes a sair.
 
 | Análise | Pergunta | Entrada | Saída |
 |---|---|---|---|
-| **EDA ANATEL** (`run_eda.py`) | O que gera reclamação no setor, e o padrão é de mercado ou de uma marca? | CSV bruto no formato real da ANATEL — latin-1, `;`, duplicatas, nulos implícitos | 7 gráficos + relatório de qualidade do dado + 4 hipóteses testadas e 1 declarada não-testável |
+| **EDA ANATEL** (`run_eda.py`) | O que gera reclamação no setor, e o padrão é de mercado ou de uma marca? | Base **aberta e real** da ANATEL: 15.952.407 linhas, 18.813.384 solicitações, jan/2015 a mai/2020 | 5 gráficos + relatório de qualidade do dado + 4 hipóteses testadas e 1 declarada não-testável |
 | **RFM** (`notebooks/rfm_analysis.ipynb`) | Quem, na base, está a caminho do cancelamento? | 300 contratos · ~4.2 mil boletos | 6 segmentos com ação recomendada e MRR em risco |
 
-As duas rodam sozinhas, com dados sintéticos versionados. Nenhuma depende de
-credencial, banco ou arquivo que não esteja no repositório.
+A EDA roda sobre agregados versionados (136 KB) extraídos da fonte real por
+`tools/preparar_anatel.py`; o RFM roda sobre base sintética versionada. Nenhuma
+depende de credencial ou de arquivo que não esteja no repositório.
 
 ---
 
 ## EDA ANATEL — limpeza e teste de hipótese
 
-O ponto do exercício não é o gráfico: é a **sujeira**. O CSV é gerado com os
-mesmos defeitos do arquivo real do portal da ANATEL, e o pipeline tem de
-sobreviver a todos eles.
+O ponto do exercício não é o gráfico: é a **sujeira** — e desde 01/09/2026 ela
+deixou de ser fabricada. O projeto rodava sobre CSV sintético que imitava os
+defeitos do arquivo da ANATEL. Agora roda sobre **a base real**, e as armadilhas
+são as de verdade, que são melhores:
 
-| Problema | Por que quebra | Tratamento |
+| Armadilha da fonte real | O que ela faz com quem não olha | Tratamento |
 |---|---|---|
-| Encoding latin-1 | Todo acento vira caractere corrompido se lido como UTF-8 | `encoding='latin-1'` |
-| Separador `;` | Com `sep=','` o arquivo vira uma coluna só | `sep=';'` |
-| 2,1% de duplicatas | Infla contagem de volume | `drop_duplicates()` |
-| Data em texto `DD/MM/AAAA` | Bloqueia qualquer operação temporal | `to_datetime(format=..., errors='coerce')` |
-| Capitalização mista | "CLARO", "Claro" e "claro " viram três empresas | normalização para marca canônica |
-| Nulos implícitos (`-`, `N/A`, `' '`) | `isna()` devolve zero e o dado inválido passa | `replace(IMPLICIT_NULLS, pd.NA)` |
+| **A ANATEL renomeou canais no meio da série** — "Fale Conosco" virou "Usuário WEB", "Aplicativo Móvel" virou "Mobile App" | A série afirma que reclamação por app **caiu a zero** em 2020, quando é o canal que mais cresce | mapa `CANAL_RENOMEADO`, aplicado antes de qualquer leitura temporal |
+| **2020 tem cinco meses** (jan–mai) | Comparar 2020 com ano cheio é comparar 5 meses com 12 | recorte de meses iguais nos dois lados |
+| **O grão não é a reclamação** — cada linha já é uma contagem em `SOLICITAÇÕES` | Contar linhas subestima: 15.952.407 linhas para 18.813.384 solicitações | soma de `SOLICITAÇÕES`, nunca `len()` |
+| **"Denúncia Anônima" e "Denúncia ANÔNIMA"** convivem | Mesma categoria contada duas vezes | documentado no relatório de qualidade |
+| **2,5 GB de CSV** | Não cabe em memória nem em repositório git | leitura em blocos de 1,5 M, agregados de 136 KB versionados |
 
-O relatório completo, coluna a coluna, sai em
+O relatório completo sai em
 [`outputs/data_quality_report.md`](outputs/data_quality_report.md) — gerado pelo
 script, não escrito à mão.
 
+### O que se perdeu na migração
+
+A base real **não tem status de atendimento**. A "taxa de resolução" que a versão
+sintética publicava — e que era a manchete dos KPIs — simplesmente não existe
+aqui, e não há como reconstruir.
+
+No lugar dela entrou a **taxa de reabertura** (`Condição = Reaberta`): a proporção
+de casos que o consumidor teve de reabrir. Mede coisa parecida, e o dado sustenta.
+
+Trocar uma métrica boa porém inventada por uma pior porém real é o ponto do
+projeto — e vale registrar que a migração **custou** alguma coisa, em vez de
+fingir que só houve ganho.
+
 ### As cinco hipóteses
 
-Declaradas **antes** de olhar o resultado, e o script imprime confirmada ou
-refutada. Uma hipótese que só pode dar certo não é hipótese.
+Declaradas **antes** de olhar o resultado, e o script imprime o veredito. Uma
+hipótese que só pode dar certo não é hipótese. **Três das cinco foram refutadas** —
+o dado real discordou da intuição em quase tudo.
 
 | # | Hipótese | Resultado |
 |---|---|---|
-| H1 | Velocidade é o motivo #1 de reclamação | **Confirmada** — 35,4% do total |
-| H2 | As 3 maiores operadoras concentram mais de 70% do volume | **Confirmada** — 86,0% |
-| H3 | Há sazonalidade, com pico no primeiro trimestre | **Confirmada** — pico em T1 |
-| H4 | A taxa de resolução varia mais de 20pp entre operadoras | **Refutada** — o gap é de 4,9pp |
-| H5 | O volume por estado acompanha a população | **Não testável aqui** — ver abaixo |
+| H1 | A CLARO é a marca mais reclamada | **Refutada** — lidera a **OI**, com 26,36%; a CLARO é a **4ª**, com 13,03% |
+| H2 | O canal de reclamação continua sendo o telefone | **Refutada** — Call Center caiu de 64,8% para 42,8%; o app subiu de 2,8% para 21,4% |
+| H3 | O que gera reclamação é falha técnica | **Refutada** — **Cobrança** é 33,62%; qualidade e reparo, 14,29% |
+| H4 | Quem recebe mais reclamação também reabre mais | **Não sustentada** — Spearman +0,05; a pior taxa é da NEXTEL (15,27%), que não é a de maior volume |
+| H5 | A queda das reclamações indica serviço melhor | **Não testável** — ver abaixo |
 
-**H5 não recebe veredito, e isso é de propósito.** O gerador sorteia a UF de cada
-reclamação a partir de `UF_DIST`, que é — por construção — participação populacional:
-SP 22%, RJ 12%, MG 10%. Rodar a correlação entre volume estadual e população devolveria
-"confirmada" com r perto de 1, e o número mediria a linha de código que escreveu os
-pesos, não o setor. É o mesmo defeito que este portfólio removeu do
-[churn-predictor](https://github.com/HugoLeonardoNz/churn-predictor), onde as variáveis
-eram sorteadas condicionadas ao próprio rótulo e a AUC saía em 0,996.
+**H1 é a mais desconfortável, e por isso a mais útil.** A versão sintética deste
+mesmo projeto afirmava que a CLARO liderava. O gerador supunha que o líder de
+mercado seria o líder de reclamação — parecia razoável e estava errado. É a
+demonstração mais limpa de por que dado sintético não substitui dado observado:
+ele confirma a suposição de quem o escreveu.
 
-Para testar H5 de verdade seria preciso um denominador externo — população ou base de
-assinantes por UF — e aí a pergunta útil deixa de ser "qual estado reclama mais" e passa
-a ser "qual estado reclama mais **por assinante**". É exatamente essa a coluna que o
-[telecom-powerbi-public](https://github.com/HugoLeonardoNz/telecom-powerbi-public) traz,
-e lá ela inverte o ranking: a SERCOMTEL reclama 4x mais por assinante que a CLARO.
+**H5 não recebe veredito, e isso é de propósito.** A base traz reclamação
+registrada, não satisfação nem base de assinantes. Queda de volume pode ser
+serviço melhor, canal mais difícil ou consumidor que desistiu de reclamar. Sem
+denominador, a pergunta não se responde — e responder assim mesmo seria opinião
+com cara de métrica. Para respondê-la faltaria a base de assinantes por marca,
+que é exatamente a coluna que o
+[telecom-powerbi-public](https://github.com/HugoLeonardoNz/telecom-powerbi-public)
+traz, e lá ela inverte o ranking.
 
-H4 é a mais útil das cinco justamente por ter sido refutada: a intuição de que
-"operadora grande atende pior" não se sustenta no dado — todas resolvem em
-patamar parecido, e o que as separa é volume, não qualidade de resposta.
-
-![Reclamações por operadora](docs/img/operadoras.png)
+![Canal de entrada da reclamação](docs/img/canais.png)
 
 ---
 
@@ -119,9 +131,17 @@ Cada métrica é cortada em quintis (1–5) e o score é a concatenação dos tr
 ```bash
 pip install -r requirements.txt
 
-python run_eda.py          # EDA ANATEL: gera dados, limpa, testa H1–H5, exporta figuras
+python run_eda.py          # EDA ANATEL: lê os agregados, testa H1–H5, exporta figuras
 jupyter notebook notebooks/rfm_analysis.ipynb
+
+# opcional — refaz os agregados a partir da fonte (baixa ~334 MB, gera 2,5 GB)
+python tools/preparar_anatel.py
 ```
+
+`run_eda.py` roda em segundos porque lê os agregados versionados. Quem quiser
+refazer tudo do zero roda `tools/preparar_anatel.py`: ele baixa o arquivo da
+ANATEL, faz **uma** passada em blocos de 1,5 milhão de linhas e reemite os sete
+agregados — conferindo, ao final, que todos fecham no mesmo total.
 
 `run_eda.py` grava os HTMLs interativos em `outputs/figures/` e os PNGs deste
 README em `docs/img/`. O tema dos gráficos fica em
@@ -144,11 +164,13 @@ telecom-eda-public/
 │   ├── theme.py                  — tema único dos gráficos (finish, save)
 │   └── rfm.py                    — calculate_rfm(), score_rfm(), assign_segments()
 ├── notebooks/
-│   ├── anatel_eda.ipynb          — a mesma análise, com narrativa
-│   └── rfm_analysis.ipynb        — segmentação da base
-├── data/                         — CSV sintético gerado pelo script
+│   └── rfm_analysis.ipynb        — segmentação da base (RFM, dado sintético)
+├── tools/preparar_anatel.py      — baixa a fonte real e emite os agregados
+├── data/
+│   ├── processed/                — 7 agregados versionados (136 KB)
+│   └── raw/                      — CSV de 2,5 GB (ignorado pelo git)
 ├── outputs/
-│   ├── figures/                  — 7 HTMLs interativos
+│   ├── figures/                  — 5 HTMLs interativos
 │   └── data_quality_report.md    — auditoria de qualidade, gerada
 └── docs/img/                     — PNGs do README, exportados pelo script
 ```
@@ -157,17 +179,24 @@ telecom-eda-public/
 
 ## Fonte dos dados
 
-**EDA ANATEL:** CSV sintético que reproduz o formato e os defeitos do arquivo
-público de reclamações de consumidores (serviço SCM): latin-1, `;`, duplicatas,
-nulos implícitos. Serve para demonstrar limpeza e análise — os números não devem
-ser citados como fato de mercado. **1.998 reclamações, 88,3% de resolução.**
+**EDA ANATEL:** base **aberta e real** da ANATEL — painel de dados do consumidor.
+15.952.407 linhas, **18.813.384 solicitações**, jan/2015 a mai/2020, 28 UFs, 83
+assuntos. Dado observado, publicado pelo regulador; os números podem ser citados
+como fato de mercado, dentro do período coberto.
+
+Fonte: `https://www.anatel.gov.br/dadosabertos/paineis_de_dados/consumidor/`
+
+O CSV bruto tem 2,5 GB e **não** está no repositório. O que está versionado são os
+sete agregados em `data/processed/` (136 KB), reproduzíveis por
+`tools/preparar_anatel.py`.
 
 > **Há dois projetos "ANATEL" neste portfólio, e eles não compartilham base.** Este
-> aqui gera 1.998 registros com 8 motivos para exercitar limpeza de CSV sujo; o
+> aqui usa o **dado real** do regulador, com grão mensal já agregado; o
 > [telecom-powerbi-public](https://github.com/HugoLeonardoNz/telecom-powerbi-public)
-> gera 8.000 com 11 categorias, star schema e denominador de assinantes, para
-> exercitar modelagem dimensional. Geradores diferentes, propósitos diferentes —
-> por isso a taxa de resolução é 88,3% aqui e 71,9% lá. Um não confere o outro.
+> usa **8.000 registros sintéticos** com star schema, denominador de assinantes e
+> taxa de resolução — métrica que a base real não tem. Propósitos diferentes:
+> um mostra análise sobre dado observado em escala, o outro mostra modelagem
+> dimensional. Um não confere o outro, e nenhum dos dois finge ser o outro.
 
 **RFM:** base FiberNet ISP (sintética) — 300 contratos · 5 cidades da RMBH ·
 4 planos de fibra · jan/2022 a out/2024. Mesma **escala e recorte** do
@@ -195,10 +224,16 @@ comentário explicava que 87,0% era número inventado e o gráfico sessenta linh
 abaixo plotava 87,0%. Em outro, o texto dizia "São Paulo tem a melhor taxa do país"
 enquanto o CSV ao lado registrava que era o 5º.
 
-Cada hipótese do README vira asserção sobre o que o `run_eda.py` imprime: H1 em
-35,4%, H2 em 86,0%, H3 com pico em T1, H4 refutada em 4,9pp. **H5 tem o teste
-invertido** — ele falha se ela GANHAR veredito, porque `UF_DIST` é participação
-populacional escrita à mão e confirmar mediria o gerador, não o setor.
+Cada número do README vira asserção sobre os mesmos agregados que o `run_eda.py`
+publica: OI em 26,36%, CLARO em 4º, Cobrança em 33,62%, app de 2,8% para 21,4%.
+**H5 tem o teste invertido** — ele falha se ela GANHAR veredito, porque confirmá-la
+exigiria base de assinantes, que a fonte não tem.
+
+Três testes cuidam das armadilhas da fonte, não dos achados: se alguém remover a
+normalização dos canais renomeados, o teste que verifica `App móvel = 21,4% em
+2020` quebra — e quebra **antes** de a conclusão invertida ser publicada. Outro
+confere que os sete agregados fecham no mesmo total; divergir significa erro de
+agregação, não de texto.
 
 Se o gerador, a fonte ou a limpeza mudarem, o teste falha e obriga a atualizar o
 texto. É a mesma regra que vale para dado: **ou se deriva de uma fonte só, ou se

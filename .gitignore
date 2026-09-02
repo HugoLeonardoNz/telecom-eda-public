@@ -9,3 +9,6 @@ venv/
 dist/
 build/
 .DS_Store
+
+# CSV bruto da ANATEL: 2,5 GB. Reproduzivel por tools/preparar_anatel.py
+data/raw/

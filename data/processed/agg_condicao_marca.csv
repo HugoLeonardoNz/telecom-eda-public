@@ -1,0 +1,219 @@
+ano,marca,condicao,solicitacoes
+2015,OI,Nova,1104170
+2016,OI,Nova,1003881
+2015,VIVO,Nova,829385
+2016,VIVO,Nova,820211
+2017,OI,Nova,760892
+2017,VIVO,Nova,712052
+2018,OI,Nova,634632
+2019,VIVO,Nova,633939
+2019,TIM,Nova,593381
+2018,VIVO,Nova,591045
+2019,OI,Nova,577490
+2018,TIM,Nova,575577
+2017,TIM,Nova,536777
+2016,TIM,Nova,514216
+2015,TIM,Nova,442261
+2015,CLARO,Nova,417381
+2016,CLARO,Nova,414370
+2017,CLARO,Nova,355050
+2019,CLARO,Nova,349902
+2020,CLARO,Nova,331020
+2017,NET,Nova,309758
+2018,CLARO,Nova,300892
+2016,NET,Nova,299643
+2015,NET,Nova,291955
+2018,NET,Nova,280088
+2020,VIVO,Nova,264029
+2019,NET,Nova,262024
+2015,SKY,Nova,246497
+2020,TIM,Nova,228431
+2020,OI,Nova,220789
+2016,SKY,Nova,177650
+2017,SKY,Nova,161789
+2015,OI,Reaberta,157103
+2016,OI,Reaberta,135811
+2018,SKY,Nova,126518
+2017,OI,Reaberta,122942
+2019,SKY,Nova,115708
+2015,NEXTEL,Nova,112640
+2016,NEXTEL,Nova,108802
+2016,VIVO,Reaberta,108388
+2015,VIVO,Reaberta,100895
+2017,NEXTEL,Nova,87899
+2017,VIVO,Reaberta,79751
+2016,TIM,Reaberta,78890
+2019,Outros,Nova,77295
+2018,OI,Reaberta,74443
+2019,OI,Reaberta,71307
+2018,Outros,Nova,67506
+2019,VIVO,Reaberta,66855
+2019,TIM,Reaberta,65308
+2017,TIM,Reaberta,64092
+2018,TIM,Reaberta,64078
+2016,Outros,Nova,61840
+2017,Outros,Nova,61588
+2018,VIVO,Reaberta,59021
+2015,Outros,Nova,54627
+2015,CLARO,Reaberta,53875
+2020,Outros,Nova,49963
+2018,NEXTEL,Nova,49595
+2015,TIM,Reaberta,48559
+2016,CLARO,Reaberta,48307
+2015,SKY,Reaberta,45090
+2020,SKY,Nova,43646
+2019,NEXTEL,Nova,43231
+2017,CLARO,Reaberta,41013
+2015,CLARO,Reencaminhada,37295
+2015,NET,Reaberta,35414
+2017,NET,Reaberta,34954
+2016,NET,Reaberta,32119
+2015,VIVO,Reencaminhada,30861
+2018,NET,Reaberta,30817
+2018,CLARO,Reaberta,29801
+2019,CLARO,Reaberta,28367
+2016,Outros,Reencaminhada,27149
+2015,OI,Reencaminhada,26764
+2015,NEXTEL,Reaberta,26740
+2019,NET,Reaberta,25248
+2016,VIVO,Reencaminhada,23987
+2016,NEXTEL,Reaberta,23772
+2017,Outros,Reencaminhada,23695
+2020,VIVO,Reaberta,23013
+2020,CLARO,Reaberta,23008
+2020,OI,Reaberta,22374
+2016,OI,Reencaminhada,22171
+2015,Outros,Reencaminhada,21456
+2016,SKY,Reaberta,21135
+2018,Outros,Reencaminhada,21092
+2015,NET,Reencaminhada,20699
+2020,NEXTEL,Nova,19786
+2020,TIM,Reaberta,19617
+2019,Outros,Reencaminhada,19583
+2017,SKY,Reaberta,18794
+2019,ALGAR,Nova,17827
+2017,NEXTEL,Reaberta,16413
+2017,VIVO,Reencaminhada,16384
+2018,ALGAR,Nova,13433
+2019,NET,Reencaminhada,12939
+2018,VIVO,Reencaminhada,12716
+2018,SKY,Reaberta,12288
+2019,SKY,Reaberta,12233
+2019,VIVO,Reencaminhada,11631
+2015,TIM,Reencaminhada,10759
+2017,OI,Reencaminhada,10510
+2017,ALGAR,Nova,9624
+2016,CLARO,Reencaminhada,8721
+2016,ALGAR,Nova,8531
+2016,TIM,Reencaminhada,7713
+2018,OI,Reencaminhada,7707
+2015,ALGAR,Nova,7658
+2020,ALGAR,Nova,7155
+2019,OI,Reencaminhada,6621
+2016,NET,Reencaminhada,5871
+2019,Outros,Reaberta,5498
+2018,TIM,Reencaminhada,5366
+2017,TIM,Reencaminhada,5134
+2017,Outros,Reaberta,5013
+2018,NEXTEL,Reaberta,4971
+2018,NET,Reencaminhada,4938
+2018,Outros,Reaberta,4690
+2017,CLARO,Reencaminhada,4660
+2020,Outros,Reaberta,4503
+2016,Outros,Reaberta,4476
+2019,TIM,Reencaminhada,4354
+2020,HUGHES,Nova,4175
+2017,NET,Reencaminhada,4150
+2015,Outros,Reaberta,3857
+2018,CLARO,Reencaminhada,3803
+2019,CLARO,Reencaminhada,3797
+2019,NEXTEL,Reaberta,3645
+2020,SKY,Reaberta,3158
+2015,SKY,Reencaminhada,2959
+2019,HUGHES,Nova,2351
+2015,NEXTEL,Reencaminhada,1669
+2019,ALGAR,Reaberta,1566
+2016,SKY,Reencaminhada,1405
+2017,SKY,Reencaminhada,1341
+2020,NEXTEL,Reaberta,1282
+2019,SKY,Reencaminhada,1251
+2018,SKY,Reencaminhada,1249
+2018,ALGAR,Reaberta,1192
+2017,SERCOMTEL,Nova,1169
+2020,Brisanet,Nova,1117
+2015,SERCOMTEL,Nova,1071
+2019,Brisanet,Nova,1047
+2016,NEXTEL,Reencaminhada,1040
+2018,HUGHES,Nova,997
+2018,SERCOMTEL,Nova,993
+2019,SERCOMTEL,Nova,975
+2019,Correios Celular,Nova,954
+2016,SERCOMTEL,Nova,851
+2015,ALGAR,Reaberta,833
+2017,ALGAR,Reaberta,819
+2016,ALGAR,Reaberta,709
+2017,NEXTEL,Reencaminhada,652
+2020,Correios Celular,Nova,615
+2020,ALGAR,Reaberta,610
+2018,Correios Celular,Nova,586
+2019,HUGHES,Reaberta,495
+2020,HUGHES,Reaberta,439
+2019,NEXTEL,Reencaminhada,436
+2019,CABO TELECOM,Nova,432
+2020,SERCOMTEL,Nova,421
+2018,SERCOMTEL,Reaberta,417
+2018,NEXTEL,Reencaminhada,409
+2017,SERCOMTEL,Reaberta,402
+2018,HUGHES,Reaberta,355
+2018,Brisanet,Nova,353
+2015,ALGAR,Reencaminhada,278
+2020,CABO TELECOM,Nova,272
+2018,CABO TELECOM,Nova,258
+2019,Correios Celular,Reaberta,229
+2019,Brisanet,Reaberta,202
+2019,Correios Celular,Reencaminhada,182
+2019,ALGAR,Reencaminhada,162
+2016,ALGAR,Reencaminhada,160
+2015,SERCOMTEL,Reaberta,151
+2016,SERCOMTEL,Reaberta,129
+2019,SERCOMTEL,Reaberta,128
+2018,Correios Celular,Reaberta,122
+2017,ALGAR,Reencaminhada,109
+2018,ALGAR,Reencaminhada,104
+2019,HUGHES,Reencaminhada,95
+2020,Brisanet,Reaberta,89
+2020,Correios Celular,Reaberta,67
+2019,CABO TELECOM,Reaberta,66
+2018,Brisanet,Reaberta,66
+2015,SERCOMTEL,Reencaminhada,57
+2018,CABO TELECOM,Reaberta,51
+2018,NOSSA TV - BRASIL,Nova,45
+2020,CABO TELECOM,Reaberta,44
+2019,SERCOMTEL,Reencaminhada,42
+2020,SERCOMTEL,Reaberta,42
+2019,NOSSA TV - BRASIL,Nova,39
+2019,Brisanet,Reencaminhada,38
+2016,SERCOMTEL,Reencaminhada,36
+2016,EMBRATEL,Nova,31
+2019,Datora,Nova,30
+2018,Correios Celular,Reencaminhada,29
+2018,SERCOMTEL,Reencaminhada,26
+2018,HUGHES,Reencaminhada,26
+2017,SERCOMTEL,Reencaminhada,22
+2018,NOSSA TV - BRASIL,Reaberta,18
+2018,Datora,Nova,17
+2019,Datora,Reencaminhada,15
+2018,Brisanet,Reencaminhada,14
+2019,NOSSA TV - BRASIL,Reaberta,8
+2016,EMBRATEL,Reaberta,5
+2019,CABO TELECOM,Reencaminhada,4
+2018,Datora,Reencaminhada,3
+2019,NOSSA TV - BRASIL,Reencaminhada,3
+2015,EMBRATEL,Nova,3
+2018,CABO TELECOM,Reencaminhada,2
+2015,,Nova,2
+2016,EMBRATEL,Reencaminhada,1
+2019,Datora,Reaberta,1
+2017,,Nova,1
+2015,Intelig,Reaberta,1
+2017,EMBRATEL,Reaberta,1

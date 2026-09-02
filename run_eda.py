@@ -1,422 +1,337 @@
 """
-run_eda.py
-Executa a análise completa do notebook anatel_eda.ipynb de forma standalone.
+EDA das reclamacoes da ANATEL — base ABERTA e REAL
 
-Gera dados sintéticos realistas (2.000 linhas) que reproduzem os padrões de
-sujeira do arquivo real ANATEL e exporta todos os gráficos em outputs/figures/.
+Execute com:  python run_eda.py
+Para refazer os agregados da fonte: python tools/preparar_anatel.py
 
-Uso:
-    python run_eda.py
+O QUE MUDOU, E POR QUE
+----------------------
+Ate 2026-09-01 este projeto rodava sobre CSV SINTETICO, gerado para imitar o
+formato da ANATEL. O exercicio era a limpeza: latin-1, duplicatas, nulos
+implicitos. Era honesto, estava etiquetado como sintetico — e mesmo assim
+respondia sobre um setor inventado.
 
-Saídas:
-    data/reclamacoes_scm_demo.csv          (dados sintéticos gerados)
-    outputs/figures/motivos.html
-    outputs/figures/status_pie.html
-    outputs/figures/operadoras.html
-    outputs/figures/heatmap_op_motivo.html
-    outputs/figures/top15_estados.html
-    outputs/figures/serie_temporal.html
-    outputs/figures/sazonalidade_trimestre.html
-    outputs/data_quality_report.md
+Agora roda sobre a base real: 15.952.407 linhas, 18.813.384 solicitacoes,
+jan/2015 a mai/2020. A sujeira deixou de ser fabricada e passou a ser a de
+verdade, que e mais interessante:
+
+  1. a ANATEL RENOMEOU canais no meio da serie ("Fale Conosco" virou
+     "Usuario WEB", "Aplicativo Movel" virou "Mobile App"). Quem plota sem
+     normalizar conclui que reclamacao por aplicativo caiu a ZERO em 2020;
+  2. 2020 tem so cinco meses (jan-mai). Comparar o ano cheio com 2020 e
+     comparar doze meses com cinco;
+  3. o grao NAO e a reclamacao individual: cada linha ja e uma contagem, na
+     coluna SOLICITACOES. Contar linhas em vez de somar da numero errado;
+  4. "Denuncia Anonima" e "Denuncia ANONIMA" convivem como categorias
+     distintas — mesma coisa, duas grafias.
+
+O QUE SE PERDEU NA MIGRACAO
+---------------------------
+A base real NAO tem status de atendimento. A "taxa de resolucao" que a versao
+sintetica publicava nao existe aqui, e nao ha como reconstruir. No lugar dela
+entrou a TAXA DE REABERTURA (Condicao = Reaberta), que o dado sustenta e que
+mede coisa parecida: proporcao de casos que o consumidor teve de reabrir.
+
+Preferir uma metrica pior porem real a uma metrica boa porem inventada e o
+ponto do projeto.
 """
 
-import io
-import random
+from __future__ import annotations
+
 import sys
-import datetime
-import warnings
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from src.theme import SEQ, finish, save  # noqa: E402
+from src import theme  # noqa: E402
 
-warnings.filterwarnings("ignore")
+RAIZ = Path(__file__).resolve().parent
+PROC = RAIZ / "data" / "processed"
+FIG = RAIZ / "outputs" / "figures"
+FIG.mkdir(parents=True, exist_ok=True)
 
-ROOT    = Path(__file__).resolve().parent
-DATA    = ROOT / "data"
-OUTPUTS = ROOT / "outputs" / "figures"
-DATA.mkdir(parents=True, exist_ok=True)
-OUTPUTS.mkdir(parents=True, exist_ok=True)
-(ROOT / "outputs").mkdir(parents=True, exist_ok=True)
+TABELAS = ("marca_mes", "uf_marca", "assunto_marca", "uf_mes",
+           "canal_ano", "condicao_marca", "tipo_ano")
 
-SEED = 42
-random.seed(SEED)
-np.random.seed(SEED)
-
-# --------------------------------------------------------------------------
-# 1. Gerador de dados sintéticos realistas
-# --------------------------------------------------------------------------
-
-OPERADORAS_RAW = {
-    "CLARO S.A.":                        ("Grande", "Claro",     0.30),
-    "CLARO S/A":                         ("Grande", "Claro",     0.04),
-    "NET SERVIÇOS DE COMUNICAÇÃO S.A.":  ("Grande", "Claro",     0.04),
-    "TELEFONICA BRASIL S.A.":            ("Grande", "Vivo",      0.24),
-    "TIM CELULAR":                       ("Grande", "TIM Group", 0.18),
-    "OI S.A.":                           ("Grande", "Oi",        0.10),
-    "SERCOMTEL S.A.":                    ("Pequeno","Sercomtel", 0.02),
-    "EMBRATEL S.A.":                     ("Grande", "Claro",     0.08),
+# A ANATEL trocou o nome de dois canais no meio da serie. Sem este mapa, a
+# leitura temporal do canal e simplesmente falsa.
+CANAL_RENOMEADO = {
+    "Usuário WEB": "Fale Conosco / Web",
+    "Fale Conosco": "Fale Conosco / Web",
+    "Mobile App": "App móvel",
+    "Aplicativo Móvel": "App móvel",
 }
 
-UF_DIST = {
-    "SP": 0.22, "RJ": 0.12, "MG": 0.10, "BA": 0.07, "RS": 0.06,
-    "PR": 0.06, "PE": 0.05, "CE": 0.04, "PA": 0.04, "GO": 0.03,
-    "MA": 0.03, "AM": 0.02, "ES": 0.02, "MT": 0.02, "MS": 0.02,
-    "PB": 0.02, "RN": 0.02, "AL": 0.01, "PI": 0.01, "SE": 0.01,
-    "TO": 0.01, "RO": 0.01, "AC": 0.005,"AP": 0.005,"RR": 0.005,
-    "DF": 0.02, "SC": 0.03,
-}
+# Marcas com volume suficiente para comparacao justa. O corte existe para nao
+# ranquear taxa de reabertura de marca com 8 mil ocorrencias contra outra com
+# 5 milhoes.
+MIN_SOLICITACOES = 100_000
 
-MOTIVOS = [
-    ("Velocidade",   "Velocidade abaixo do contratado",    0.34),
-    ("Cobrança",     "Cobrança indevida",                  0.22),
-    ("Falha",        "Falha/Interrupção do serviço",        0.18),
-    ("Atendimento",  "Atendimento inadequado",              0.10),
-    ("Contrato",     "Cancelamento não realizado",          0.08),
-    ("Instalação",   "Prazo de instalação excedido",        0.05),
-    ("Outros",       "Outros",                              0.03),
-]
-
-STATUS_DIST = [("Respondida", 0.68), ("Não Respondida", 0.20), ("Em Andamento", 0.12)]
-IMPLICIT_NULL_VALS = ["-", "N/A", "NÃO INFORMADO", " "]
+QUALIDADE = "Qualidade, Funcionamento e Reparo"
 
 
-def _rdate(start, end):
-    delta = (end - start).days
-    d = start + datetime.timedelta(days=random.randint(0, delta))
-    return d.strftime("%d/%m/%Y")
+def carregar() -> dict[str, pd.DataFrame]:
+    faltando = [n for n in TABELAS if not (PROC / f"agg_{n}.csv").exists()]
+    if faltando:
+        raise SystemExit(
+            "Agregados ausentes: " + ", ".join(faltando)
+            + "\nRode primeiro: python tools/preparar_anatel.py"
+        )
+    return {n: pd.read_csv(PROC / f"agg_{n}.csv") for n in TABELAS}
 
 
-def _noise(value, prob=0.03):
-    if random.random() < prob:
-        return random.choice(IMPLICIT_NULL_VALS)
-    return value
+def _br(n: float, casas: int = 0) -> str:
+    """Numero com separador de milhar em pt-BR."""
+    return f"{n:,.{casas}f}".replace(",", ".")
 
 
-def _op_variant(name):
-    variants = [name, name.lower().title(), name.upper()]
-    return random.choices(variants, weights=[0.88, 0.06, 0.06], k=1)[0]
+def canais_normalizados(canal_ano: pd.DataFrame) -> pd.DataFrame:
+    ca = canal_ano.copy()
+    ca["canal"] = ca["canal"].map(CANAL_RENOMEADO).fillna(ca["canal"])
+    return ca
 
 
-def generate_demo_data(n=2000, start_year=2022, end_year=2023) -> pd.DataFrame:
-    start = datetime.date(start_year, 1, 1)
-    end   = datetime.date(end_year, 12, 31)
+def reabertura_por_marca(condicao_marca: pd.DataFrame) -> pd.DataFrame:
+    pv = condicao_marca.pivot_table(index="marca", columns="condicao",
+                                    values="solicitacoes", aggfunc="sum").fillna(0)
+    pv["total"] = pv.sum(axis=1)
+    pv["reab"] = pv.get("Reaberta", 0) / pv["total"] * 100
+    return pv[pv["total"] >= MIN_SOLICITACOES]
 
-    op_names   = list(OPERADORAS_RAW.keys())
-    op_weights = [v[2] for v in OPERADORAS_RAW.values()]
-    uf_list    = list(UF_DIST.keys())
-    uf_weights = list(UF_DIST.values())
-
-    rows = []
-    for _ in range(n):
-        op    = random.choices(op_names, weights=op_weights, k=1)[0]
-        uf    = random.choices(uf_list, weights=uf_weights, k=1)[0]
-        mot   = random.choices(MOTIVOS, weights=[m[2] for m in MOTIVOS], k=1)[0]
-        st    = random.choices([s[0] for s in STATUS_DIST],
-                               weights=[s[1] for s in STATUS_DIST], k=1)[0]
-        porte, grupo, _ = OPERADORAS_RAW[op]
-
-        rows.append({
-            "Data_Abertura":  _rdate(start, end),
-            "Tipo":           "Reclamação",
-            "Motivo":         _noise(mot[0]),
-            "Detalhe_Motivo": _noise(mot[1]),
-            "Status":         st,
-            "Agrupamento":    "SCM",
-            "Nome":           _noise(_op_variant(op), prob=0.01),
-            "Porte":          _noise(porte, prob=0.02),
-            "Grupo_Economico":_noise(grupo, prob=0.02),
-            "UF":             uf,
-        })
-
-    # Inject ~2% duplicates (ANATEL re-uploads)
-    n_dup = int(n * 0.02)
-    rows += random.choices(rows, k=n_dup)
-    random.shuffle(rows)
-    return pd.DataFrame(rows)
-
-
-print("Gerando dados sinteticos realistas (2.000 linhas)...")
-df_raw = generate_demo_data(2000)
-demo_path = DATA / "reclamacoes_scm_demo.csv"
-df_raw.to_csv(demo_path, sep=";", index=False, encoding="latin-1")
-print(f"  Salvo em: {demo_path} ({len(df_raw):,} linhas x {df_raw.shape[1]} colunas)")
 
 # --------------------------------------------------------------------------
-# 2. Auditoria de qualidade dos dados (antes da limpeza)
+# Qualidade do dado — o que a fonte real esconde
 # --------------------------------------------------------------------------
 
-IMPLICIT_NULLS = {"-", "N/A", "NA", "NÃO INFORMADO", "NAO INFORMADO", " ", ""}
+def relatorio_qualidade(d: dict[str, pd.DataFrame]) -> str:
+    total = int(d["marca_mes"]["solicitacoes"].sum())
 
-audit_rows = []
-for col in df_raw.columns:
-    n_real     = df_raw[col].isna().sum()
-    n_implicit = df_raw[col].isin(IMPLICIT_NULLS).sum()
-    audit_rows.append({
-        "coluna": col,
-        "tipo": str(df_raw[col].dtype),
-        "nulos_reais": n_real,
-        "nulos_implicitos": n_implicit,
-        "total_nulos": n_real + n_implicit,
-        "pct_nulos": f"{(n_real + n_implicit) / len(df_raw) * 100:.1f}%",
-    })
+    por_ano = d["canal_ano"].pivot_table(index="canal", columns="ano",
+                                         values="solicitacoes", aggfunc="sum").fillna(0)
+    sumiram = [c for c in ("Fale Conosco", "Aplicativo Móvel")
+               if c in por_ano.index and por_ano.loc[c, 2020] == 0]
+    surgiram = [c for c in ("Usuário WEB", "Mobile App")
+                if c in por_ano.index and por_ano.loc[c, 2015] == 0]
 
-audit_df = pd.DataFrame(audit_rows)
-n_dup_raw = df_raw.duplicated().sum()
+    mm = d["marca_mes"]
+    meses_2020 = sorted({int(a[5:7]) for a in mm["ano_mes"] if a.startswith("2020")})
 
-# Salva relatório de qualidade
-quality_report_path = ROOT / "outputs" / "data_quality_report.md"
-with open(quality_report_path, "w", encoding="utf-8") as f:
-    f.write("# Data Quality Report — ANATEL SCM (Demo)\n\n")
-    f.write(f"**Dataset:** reclamacoes_scm_demo.csv  \n")
-    f.write(f"**Linhas antes da limpeza:** {len(df_raw):,}  \n")
-    f.write(f"**Colunas:** {df_raw.shape[1]}  \n\n")
-    f.write("## Problemas identificados\n\n")
-    f.write("| # | Problema | Impacto | Estratégia de Tratamento |\n")
-    f.write("|---|----------|---------|-------------------------|\n")
-    f.write("| 1 | Encoding latin-1 (charset não-padrão) | Todos os caracteres acentuados corrompidos se lido como UTF-8 | `pd.read_csv(..., encoding='latin-1')` |\n")
-    f.write("| 2 | Separador `;` (não-padrão) | DataFrame com 1 coluna gigante se lido com sep=',' | `pd.read_csv(..., sep=';')` |\n")
-    f.write(f"| 3 | Duplicatas ({n_dup_raw} linhas = {n_dup_raw/len(df_raw)*100:.1f}%) | Contagens infladas de volume | `df.drop_duplicates()` |\n")
-    f.write("| 4 | Datas como string (DD/MM/AAAA) | Não permite operações temporais | `pd.to_datetime(format='%d/%m/%Y', errors='coerce')` |\n")
-    f.write("| 5 | Capitalização mista em operadoras | Mesma empresa contada 3x | Normalização para brand canônico |\n")
-    f.write("| 6 | Nulos implícitos ('-', 'N/A', ' ') | `isna()` retorna 0 mas dado é inválido | `df.replace(IMPLICIT_NULLS, pd.NA)` |\n\n")
-    f.write("## Auditoria por coluna\n\n")
-    f.write(audit_df.to_markdown(index=False))
-    f.write("\n\n## Decisões de limpeza\n\n")
-    f.write("- **Data_Abertura + Nome (operadora):** colunas chave — linhas com nulo são descartadas (`dropna`)\n")
-    f.write("- **Motivo, Detalhe_Motivo, Status:** nulos preenchidos com 'Não Informado' para preservar a linha\n")
-    f.write("- **UF:** nulos substituídos por 'XX' (código de fallback)\n")
+    grafias = sorted({t for t in d["tipo_ano"]["tipo"].unique()
+                      if isinstance(t, str) and t.lower() == "denúncia anônima"})
 
-print(f"  Relatorio de qualidade: {quality_report_path.name}")
+    linhas = [
+        "# Relatório de qualidade — base real da ANATEL",
+        "",
+        f"- **Solicitações**: {_br(total)}",
+        f"- **Período**: {mm['ano_mes'].min()} a {mm['ano_mes'].max()}",
+        "- **Fonte**: dados abertos da ANATEL (painel do consumidor)",
+        "",
+        "Este relatório é gerado por `run_eda.py`. Cada item abaixo é uma",
+        "armadilha real da fonte, não um defeito fabricado para o exercício.",
+        "",
+        "## 1. Canais renomeados no meio da série",
+        "",
+        f"Zerados em 2020: {', '.join(sumiram) or '(nenhum)'}.",
+        f"Inexistentes em 2015: {', '.join(surgiram) or '(nenhum)'}.",
+        "",
+        "Não são canais novos: são os mesmos, renomeados. Tratados como",
+        "categorias distintas, a série afirma que a reclamação por aplicativo",
+        "caiu a zero em 2020 — quando ela é justamente a que mais cresce.",
+        "",
+        "## 2. 2020 é um ano parcial",
+        "",
+        f"Meses presentes em 2020: {', '.join(f'{m:02d}' for m in meses_2020)}.",
+        "Qualquer comparação anual precisa recortar os mesmos meses dos dois lados.",
+        "",
+        "## 3. O grão não é a reclamação",
+        "",
+        "Cada linha já é uma contagem, na coluna `SOLICITAÇÕES`. Contar linhas",
+        f"subestima o volume: são 15.952.407 linhas para {_br(total)} solicitações.",
+        "",
+        "## 4. Mesma categoria, duas grafias",
+        "",
+        f"Encontradas: {', '.join(repr(g) for g in grafias) or '(nenhuma)'}.",
+        "",
+    ]
+    return "\n".join(linhas)
+
 
 # --------------------------------------------------------------------------
-# 3. Pipeline de limpeza
+# Hipóteses
 # --------------------------------------------------------------------------
 
-BRAND_MAP = {
-    "CLARO":     ["CLARO S.A.", "CLARO S/A", "CLARO", "NET SERV", "EMBRATEL"],
-    "VIVO":      ["VIVO", "TELEFONIC"],
-    "TIM":       ["TIM"],
-    "OI":        ["OI S.A.", "OI MOVEL", "OI "],
-    "SERCOMTEL": ["SERCOMTEL"],
-}
+def hipoteses(d: dict[str, pd.DataFrame]) -> list[tuple[str, str, str]]:
+    """Cada hipótese devolve (rótulo, veredito, frase com o número)."""
+    out: list[tuple[str, str, str]] = []
+    total = int(d["marca_mes"]["solicitacoes"].sum())
 
+    # H1 — quem lidera as reclamações
+    marca = d["marca_mes"].groupby("marca")["solicitacoes"].sum().sort_values(ascending=False)
+    lider, v1 = marca.index[0], int(marca.iloc[0])
+    claro = int(marca.get("CLARO", 0))
+    pos_claro = list(marca.index).index("CLARO") + 1
+    out.append((
+        "H1 — a CLARO é a marca mais reclamada",
+        "REFUTADA",
+        f"Quem lidera é a {lider}, com {_br(v1)} solicitações ({v1 / total * 100:.2f}%). "
+        f"A CLARO é a {pos_claro}ª, com {_br(claro)} ({claro / total * 100:.2f}%). "
+        "A versão sintética deste projeto afirmava o contrário — o gerador supunha "
+        "o líder de mercado como líder de reclamação.",
+    ))
 
-def normalize_operadora(raw):
-    if pd.isna(raw):
-        return "DESCONHECIDA"
-    raw_up = str(raw).strip().upper()
-    for brand, patterns in BRAND_MAP.items():
-        if any(p in raw_up for p in patterns):
-            return brand
-    return raw_up.split()[0]
+    # H2 — canal de entrada
+    p = canais_normalizados(d["canal_ano"]).pivot_table(
+        index="canal", columns="ano", values="solicitacoes", aggfunc="sum").fillna(0)
+    share = p / p.sum(axis=0) * 100
+    a15, a20 = share.loc["App móvel", 2015], share.loc["App móvel", 2020]
+    cc15, cc20 = share.loc["Call Center", 2015], share.loc["Call Center", 2020]
+    out.append((
+        "H2 — o canal de reclamação continua sendo o telefone",
+        "REFUTADA",
+        f"O Call Center caiu de {cc15:.1f}% para {cc20:.1f}% do total, e o app subiu "
+        f"de {a15:.1f}% para {a20:.1f}% — {a20 / a15:.1f}× em cinco anos. Sem normalizar "
+        "os canais renomeados, o app apareceria com 0,0% em 2020.",
+    ))
 
+    # H3 — natureza do problema
+    assunto = d["assunto_marca"].groupby("assunto")["solicitacoes"].sum().sort_values(ascending=False)
+    top, vt = assunto.index[0], int(assunto.iloc[0])
+    out.append((
+        "H3 — o que gera reclamação é falha técnica",
+        "REFUTADA",
+        f"O assunto que mais gera reclamação é '{top}', com {vt / total * 100:.2f}% do total. "
+        f"'{QUALIDADE}' vem em segundo, com "
+        f"{assunto.get(QUALIDADE, 0) / total * 100:.2f}%. "
+        "O problema do setor é comercial antes de ser técnico.",
+    ))
 
-def clean_pipeline(df):
-    df = df.copy()
-    df.replace(IMPLICIT_NULLS, pd.NA, inplace=True)
-    before = len(df)
-    df = df.drop_duplicates()
-    removed_dup = before - len(df)
-    df["Data_Abertura"] = pd.to_datetime(
-        df["Data_Abertura"].str.strip(), format="%d/%m/%Y", errors="coerce"
-    )
-    invalid_dates = df["Data_Abertura"].isna().sum()
-    df = df.dropna(subset=["Data_Abertura"])
-    for col in ["Motivo", "Detalhe_Motivo", "Status", "Tipo"]:
-        if col in df.columns:
-            df[col] = df[col].str.strip().str.title().fillna("Não Informado")
-    df["UF"] = df["UF"].str.strip().str.upper().fillna("XX")
-    df["Operadora"] = df["Nome"].apply(normalize_operadora)
-    df["Ano"]       = df["Data_Abertura"].dt.year
-    df["Mes"]       = df["Data_Abertura"].dt.month
-    df["AnoMes"]    = df["Data_Abertura"].dt.to_period("M").astype(str)
-    df["Trimestre"] = df["Data_Abertura"].dt.quarter.map({1:"T1",2:"T2",3:"T3",4:"T4"})
-    return df, removed_dup, invalid_dates
+    # H4 — volume x reabertura
+    pv = reabertura_por_marca(d["condicao_marca"])
+    rho = pv["total"].corr(pv["reab"], method="spearman")
+    pior = pv["reab"].idxmax()
+    maior = pv["total"].idxmax()
+    out.append((
+        "H4 — quem recebe mais reclamação também reabre mais",
+        "NÃO SUSTENTADA",
+        f"A correlação de Spearman entre volume e taxa de reabertura é {rho:+.2f} "
+        f"entre as {len(pv)} marcas com pelo menos {_br(MIN_SOLICITACOES)} solicitações. "
+        f"A pior taxa é da {pior} ({pv.loc[pior, 'reab']:.2f}%), que não é a de maior "
+        f"volume ({maior}). Volume e qualidade de atendimento são eixos diferentes.",
+    ))
 
+    # H5 — não testável, de propósito
+    out.append((
+        "H5 — a queda das reclamações indica serviço melhor",
+        "NÃO TESTÁVEL",
+        "A base traz reclamação registrada, não satisfação nem base de assinantes. "
+        "Queda de volume pode ser serviço melhor, canal mais difícil ou consumidor "
+        "que desistiu de reclamar. Sem denominador, a pergunta não se responde com "
+        "este dado — e responder assim mesmo seria opinião com cara de métrica.",
+    ))
+    return out
 
-print("\nExecutando pipeline de limpeza...")
-df, removed_dup, invalid_dates = clean_pipeline(df_raw)
-print(f"  Duplicatas removidas: {removed_dup}")
-print(f"  Datas invalidas descartadas: {invalid_dates}")
-print(f"  Shape final: {df.shape}")
-print(f"  Operadoras: {sorted(df['Operadora'].unique())}")
-
-# Validação pós-limpeza
-assert df.duplicated().sum() == 0, "FAIL: ainda ha duplicatas"
-assert df["Data_Abertura"].isna().sum() == 0, "FAIL: ainda ha datas nulas"
-assert df["Operadora"].isna().sum() == 0, "FAIL: ainda ha operadoras nulas"
-print("  Validacao: OK")
 
 # --------------------------------------------------------------------------
-# 4. KPIs
+# Figuras
 # --------------------------------------------------------------------------
 
-total       = len(df)
-respondidas = df["Status"].str.contains("Respondid", na=False).sum()
-taxa_res    = respondidas / total * 100
+def figuras(d: dict[str, pd.DataFrame]) -> None:
+    total = int(d["marca_mes"]["solicitacoes"].sum())
 
-print(f"\nKPIs:")
-print(f"  Total reclamacoes:    {total:,}")
-print(f"  Taxa de resolucao:    {taxa_res:.1f}%")
-print(f"  Operadoras:          {df['Operadora'].nunique()}")
-print(f"  Estados cobertos:    {df['UF'].nunique()}")
-print(f"  Tipos de motivo:     {df['Motivo'].nunique()}")
-print(f"  Periodo: {df['Data_Abertura'].min().strftime('%d/%m/%Y')} a {df['Data_Abertura'].max().strftime('%d/%m/%Y')}")
+    marca = d["marca_mes"].groupby("marca")["solicitacoes"].sum().sort_values()
+    marca = marca[marca >= MIN_SOLICITACOES]
+    fig = go.Figure(go.Bar(
+        x=marca.values, y=marca.index, orientation="h", marker_color=theme.BLUE,
+        text=[f"{v / total * 100:.1f}%" for v in marca.values],
+        textposition="outside", cliponaxis=False,
+    ))
+    theme.finish(fig, "Solicitações por marca",
+                 f"ANATEL · jan/2015 a mai/2020 · {_br(total)} solicitações", height=420)
+    fig.update_xaxes(title="solicitações")
+    theme.save(fig, FIG, "marcas", png=True)
 
-# --------------------------------------------------------------------------
-# 5. Gráficos
-# --------------------------------------------------------------------------
+    p = canais_normalizados(d["canal_ano"]).pivot_table(
+        index="ano", columns="canal", values="solicitacoes", aggfunc="sum").fillna(0)
+    p = p.div(p.sum(axis=1), axis=0) * 100
+    fig = go.Figure()
+    for c, cor in (("Call Center", theme.SLATE),
+                   ("Fale Conosco / Web", theme.BLUE_DIM),
+                   ("App móvel", theme.BLUE)):
+        if c in p:
+            fig.add_trace(go.Scatter(x=p.index, y=p[c], name=c, mode="lines+markers",
+                                     line=dict(color=cor, width=3)))
+    theme.finish(fig, "Canal de entrada da reclamação",
+                 "share anual · canais renomeados pela ANATEL já normalizados", height=420)
+    fig.update_yaxes(title="% das solicitações", ticksuffix="%")
+    theme.save(fig, FIG, "canais", png=True)
 
-print("\nGerando graficos...")
+    s = d["marca_mes"].groupby("ano_mes")["solicitacoes"].sum().sort_index()
+    fig = go.Figure(go.Scatter(x=s.index, y=s.values, mode="lines",
+                               line=dict(color=theme.BLUE, width=2)))
+    theme.finish(fig, "Solicitações por mês",
+                 "2020 termina em maio — a série é parcial no último ano", height=400)
+    fig.update_yaxes(title="solicitações")
+    theme.save(fig, FIG, "serie_temporal", png=False)
 
-# 5.1 Distribuição por motivo
-motivo_cnt = df["Motivo"].value_counts().reset_index()
-motivo_cnt.columns = ["Motivo", "Total"]
-motivo_cnt["Pct"] = (motivo_cnt["Total"] / total * 100).round(1)
-top1_motivo = motivo_cnt.iloc[0]["Motivo"]
-top1_pct    = motivo_cnt.iloc[0]["Pct"]
-h1_ok = "velocidade" in top1_motivo.lower()
+    pv = reabertura_por_marca(d["condicao_marca"]).sort_values("reab")
+    fig = go.Figure(go.Bar(x=pv["reab"], y=pv.index, orientation="h",
+                           marker_color=theme.AMBER,
+                           text=[f"{v:.1f}%" for v in pv["reab"]],
+                           textposition="outside", cliponaxis=False))
+    theme.finish(fig, "Taxa de reabertura por marca",
+                 "casos que o consumidor teve de reabrir · substitui a taxa de "
+                 "resolução, que a base real não tem", height=420)
+    fig.update_xaxes(title="% reaberta", ticksuffix="%")
+    theme.save(fig, FIG, "reabertura", png=True)
 
-fig = px.bar(
-    motivo_cnt, x="Pct", y="Motivo", orientation="h",
-    text=motivo_cnt["Pct"].astype(str) + "%",
-    color="Pct", color_continuous_scale="Blues",
-    labels={"Pct": "% do total", "Motivo": "Motivo"},
-)
-fig.update_traces(textposition="outside")
-fig.update_layout(yaxis={"categoryorder": "total ascending"}, coloraxis_showscale=False)
-finish(fig, "H1 · Distribuição por motivo de reclamação",
-       f"motivo mais frequente: {top1_motivo} ({top1_pct}% do total)", height=420)
-save(fig, OUTPUTS, "motivos")
-print(f"  OK motivos.html | H1: {'CONFIRMADA' if h1_ok else 'REFUTADA'} ('{top1_motivo}' = {top1_pct}%)")
+    a = d["assunto_marca"].groupby("assunto")["solicitacoes"].sum().sort_values().tail(10)
+    fig = go.Figure(go.Bar(x=a.values, y=[t[:44] for t in a.index], orientation="h",
+                           marker_color=theme.BLUE))
+    theme.finish(fig, "Assuntos mais reclamados", "top 10 de 83 categorias", height=460)
+    theme.save(fig, FIG, "assuntos", png=False)
 
-# 5.2 Status (pie chart)
-status_cnt = df["Status"].value_counts().reset_index()
-status_cnt.columns = ["Status", "Total"]
-fig = px.pie(status_cnt, values="Total", names="Status", hole=0.45,
-             color_discrete_sequence=["#0F766E", "#B91C1C", "#B45309"])
-finish(fig, "Situação das reclamações", "participação de cada status no total", height=400)
-save(fig, OUTPUTS, "status_pie")
-print("  OK status_pie.html")
 
-# 5.3 Operadoras: volume + taxa de resolução (H2 + H4)
-op = df.groupby("Operadora").agg(
-    Total=("Operadora", "count"),
-    Respondidas=("Status", lambda x: x.str.contains("Respondid", na=False).sum()),
-).assign(Taxa_Res=lambda d: (d["Respondidas"] / d["Total"] * 100).round(1)).sort_values("Total", ascending=False).reset_index()
+def _quebrar(texto: str, largura: int) -> list[str]:
+    palavras, linha, saida = texto.split(), "", []
+    for p in palavras:
+        if len(linha) + len(p) + 1 > largura:
+            saida.append(linha)
+            linha = p
+        else:
+            linha = f"{linha} {p}".strip()
+    if linha:
+        saida.append(linha)
+    return saida
 
-top3_share = op.head(3)["Total"].sum() / total * 100
-gap_res    = op["Taxa_Res"].max() - op["Taxa_Res"].min()
-h2_ok = top3_share > 70
-h4_ok = gap_res >= 20
 
-fig = make_subplots(rows=1, cols=2,
-    subplot_titles=(f"H2: Volume (Top 3 = {top3_share:.1f}%)",
-                    f"H4: Taxa de Resolução (Gap = {gap_res:.1f}pp)"))
-CORES = {"Claro":"#EE4023","Vivo":"#660099","Tim":"#003087","Oi":"#FFDD00","Sercomtel":"#2ECC71","Desconhecida":"#95A5A6"}
-cores = [CORES.get(o.title(), "#95A5A6") for o in op["Operadora"]]
-fig.add_trace(go.Bar(x=op["Operadora"], y=op["Total"],
-    marker_color=cores, text=op["Total"], textposition="outside", name="Volume"), row=1, col=1)
-fig.add_trace(go.Bar(x=op["Operadora"], y=op["Taxa_Res"],
-    marker=dict(color=op["Taxa_Res"], colorscale="RdYlGn", cmin=40, cmax=100),
-    text=op["Taxa_Res"].astype(str) + "%", textposition="outside", name="Taxa Res."), row=1, col=2)
-fig.add_hline(y=op["Taxa_Res"].mean(), row=1, col=2, line_dash="dash", line_color="grey",
-              annotation_text=f"Media: {op['Taxa_Res'].mean():.1f}%", annotation_position="right")
-fig.update_layout(showlegend=False)
-finish(fig, "Reclamações por operadora",
-       "volume bruto à esquerda, qualidade do atendimento à direita — as duas leituras discordam",
-       height=470)
-save(fig, OUTPUTS, "operadoras", png=True)
-print(f"  OK operadoras.html | H2: {'CONFIRMADA' if h2_ok else 'REFUTADA'} | H4: {'CONFIRMADA' if h4_ok else 'REFUTADA'}")
+def main() -> None:
+    d = carregar()
+    total = int(d["marca_mes"]["solicitacoes"].sum())
 
-# 5.4 Heatmap Operadora × Motivo
-hm = df.groupby(["Operadora", "Motivo"]).size().unstack(fill_value=0)
-fig = px.imshow(hm, text_auto=True, color_continuous_scale=SEQ, aspect="auto",
-                labels=dict(x="Motivo", y="Operadora", color="Reclamações"))
-finish(fig, "Operadora × motivo",
-       "volume de reclamações no cruzamento — a cor acompanha o número, não o substitui",
-       height=460)
-save(fig, OUTPUTS, "heatmap_op_motivo", png=True)
-print("  OK heatmap_op_motivo.html")
+    print("=" * 74)
+    print("  EDA ANATEL — base aberta e real")
+    print("=" * 74)
+    print(f"  {_br(total)} solicitações · "
+          f"{d['marca_mes']['ano_mes'].min()} a {d['marca_mes']['ano_mes'].max()}")
 
-# 5.5 Top 15 estados
-REGIAO = {
-    "SP":"Sudeste","RJ":"Sudeste","MG":"Sudeste","ES":"Sudeste",
-    "RS":"Sul","PR":"Sul","SC":"Sul",
-    "BA":"Nordeste","PE":"Nordeste","CE":"Nordeste","MA":"Nordeste",
-    "PB":"Nordeste","RN":"Nordeste","AL":"Nordeste","SE":"Nordeste","PI":"Nordeste",
-    "PA":"Norte","AM":"Norte","TO":"Norte","RO":"Norte","AC":"Norte","RR":"Norte","AP":"Norte",
-    "GO":"Centro-Oeste","DF":"Centro-Oeste","MT":"Centro-Oeste","MS":"Centro-Oeste",
-}
-COR_REG = {"Sudeste":"#2C3E50","Nordeste":"#E74C3C","Sul":"#27AE60","Norte":"#F39C12","Centro-Oeste":"#9B59B6"}
+    destino = RAIZ / "outputs" / "data_quality_report.md"
+    destino.write_text(relatorio_qualidade(d), encoding="utf-8")
+    print(f"\n  relatório de qualidade -> {destino.relative_to(RAIZ)}")
 
-uf_df = df.groupby("UF").agg(
-    Total=("UF", "count"),
-    Respondidas=("Status", lambda x: x.str.contains("Respondid", na=False).sum()),
-).assign(Taxa_Res=lambda d: (d["Respondidas"] / d["Total"] * 100).round(1)).sort_values("Total", ascending=False).head(15).reset_index()
-uf_df["Regiao"] = uf_df["UF"].map(REGIAO).fillna("Outros")
+    figuras(d)
+    print(f"  figuras                -> {FIG.relative_to(RAIZ)}")
 
-fig = px.bar(uf_df, x="UF", y="Total",
-             color="Regiao", color_discrete_map=COR_REG,
-             text="Total",
-             labels={"Total": "Reclamações", "UF": "Estado"})
-fig.update_traces(textposition="outside")
-# H5 nao recebe veredito: UF_DIST E participacao populacional escrita a mao, entao
-# correlacionar volume com populacao mediria o gerador. Fica como descritivo, e o
-# subtitulo diz o que falta para a pergunta virar analise.
-finish(fig, "H5 · Top 15 estados por volume",
-       "cor por região · sem denominador de assinantes, o ranking mede tamanho de estado, não qualidade de serviço",
-       height=460)
-save(fig, OUTPUTS, "top15_estados")
-print("  OK top15_estados.html")
+    print("\n" + "=" * 74)
+    print("  HIPÓTESES")
+    print("=" * 74)
+    for rotulo, veredito, frase in hipoteses(d):
+        print(f"\n  [{veredito}] {rotulo}")
+        for linha in _quebrar(frase, 68):
+            print(f"      {linha}")
+    print()
 
-# 5.6 Série temporal mensal
-ts = df.groupby(["AnoMes", "Operadora"]).size().reset_index(name="Total")
-ts = ts.sort_values("AnoMes")
 
-fig = px.line(ts, x="AnoMes", y="Total", color="Operadora",
-              markers=True,
-              title="<b>Evolução Mensal de Reclamações por Operadora</b>",
-              labels={"AnoMes": "Mes", "Total": "Reclamações"},
-              color_discrete_map={k.title(): v for k, v in CORES.items()})
-finish(fig, "Evolução mensal por operadora",
-       "cor fixa por marca, a mesma em todos os gráficos", height=440)
-save(fig, OUTPUTS, "serie_temporal")
-print("  OK serie_temporal.html")
-
-# 5.7 Sazonalidade por trimestre (H3)
-trim_df = df.groupby("Trimestre").size().reset_index(name="Total")
-trim_df = trim_df.sort_values("Trimestre")
-pico_trim = trim_df.loc[trim_df["Total"].idxmax(), "Trimestre"]
-h3_ok = pico_trim == "T1"
-
-fig = px.bar(trim_df, x="Trimestre", y="Total", text="Total",
-             color="Total", color_continuous_scale=SEQ)
-fig.update_traces(textposition="outside")
-fig.update_layout(coloraxis_showscale=False)
-finish(fig, "H3 · Sazonalidade por trimestre", f"pico no {pico_trim}", height=400)
-save(fig, OUTPUTS, "sazonalidade_trimestre")
-print(f"  OK sazonalidade_trimestre.html | H3: {'CONFIRMADA' if h3_ok else 'REFUTADA'} (pico em {pico_trim})")
-
-# --------------------------------------------------------------------------
-# 6. Resumo das hipóteses
-# --------------------------------------------------------------------------
-
-print("\n" + "=" * 60)
-print("RESUMO DAS HIPOTESES")
-print("=" * 60)
-print(f"  H1: {'CONFIRMADA' if h1_ok else 'REFUTADA':10s} | Motivo #1: {top1_motivo} ({top1_pct}%)")
-print(f"  H2: {'CONFIRMADA' if h2_ok else 'REFUTADA':10s} | Top 3 operadoras = {top3_share:.1f}%")
-print(f"  H3: {'CONFIRMADA' if h3_ok else 'REFUTADA':10s} | Pico em {pico_trim}")
-print(f"  H4: {'CONFIRMADA' if h4_ok else 'REFUTADA':10s} | Gap taxa resolucao = {gap_res:.1f}pp")
-
-print(f"\nFiguras salvas em: {OUTPUTS}")
-print(f"Total: 7 graficos HTML interativos")
-print(f"Relatorio de qualidade: {quality_report_path}")
+if __name__ == "__main__":
+    main()
