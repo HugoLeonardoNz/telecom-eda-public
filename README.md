@@ -23,7 +23,7 @@ do mercado, e o que a base de uma operadora diz sobre quem está prestes a sair.
 | Análise | Pergunta | Entrada | Saída |
 |---|---|---|---|
 | **EDA ANATEL** (`run_eda.py`) | O que gera reclamação no setor, e o padrão é de mercado ou de uma marca? | Base **aberta e real** da ANATEL: 15.952.407 linhas, 18.813.384 solicitações, jan/2015 a mai/2020 | 5 gráficos + relatório de qualidade do dado + 4 hipóteses testadas e 1 declarada não-testável |
-| **RFM** (`notebooks/rfm_analysis.ipynb`) | Quem, na base, está a caminho do cancelamento? | 300 contratos · ~4.2 mil boletos | 6 segmentos com ação recomendada e MRR em risco |
+| **RFM** (`run_rfm.py`) | Quem, na base, está a caminho do cancelamento? | 300 contratos · 4.398 boletos | Segmentos com MRR, e o buraco que as regras deixam |
 
 A EDA roda sobre agregados versionados (136 KB) extraídos da fonte real por
 `tools/preparar_anatel.py`; o RFM roda sobre base sintética versionada. Nenhuma
@@ -112,17 +112,34 @@ pagamentos capturam esse padrão enquanto ainda dá para agir.
 Cada métrica é cortada em quintis (1–5) e o score é a concatenação dos três —
 "545" é recente, frequente e de alto valor.
 
-| Segmento | Clientes | % base | MRR (R$) | % MRR |
+| Segmento | Contratos | % base | MRR (R$) | % MRR |
 |---|---:|---:|---:|---:|
-| Campeões | ~44 | 14,7% | ~5.600 | 19,6% |
-| Leais | ~61 | 20,3% | ~7.700 | 27,1% |
-| Potenciais leais | ~30 | 10,0% | ~3.000 | 10,5% |
-| **Em risco** | **~45** | **15,0%** | **~5.400** | **19,0%** |
-| Hibernando | ~75 | 25,0% | ~4.200 | 14,9% |
-| Perdidos | ~45 | 15,0% | ~2.600 | 9,1% |
+| **Outros** (sem regra) | **63** | **21,9%** | **11.697** | **28,1%** |
+| Campeões | 54 | 18,8% | 8.736 | 21,0% |
+| Hibernando | 73 | 25,3% | 8.507 | 20,5% |
+| **Em Risco** | **38** | **13,2%** | **5.242** | **12,6%** |
+| Leais | 32 | 11,1% | 4.048 | 9,7% |
+| Potenciais Leais | 28 | 9,7% | 3.332 | 8,0% |
 
-> Campeões + Leais são 35% dos clientes e 47% do MRR. Em risco + Hibernando são
-> 40% dos clientes e ~R$ 9,6 mil de MRR ameaçado — 33,9% do total.
+![MRR por segmento RFM](docs/img/rfm_segmentos.png)
+
+**O maior bloco de receita é o que a segmentação não classifica.** As regras de
+`src/rfm.py` cobrem combinações específicas de R, F e M; 63 contratos — 21,9% da
+base e 28,1% do MRR — não caem em nenhuma delas e vão para o balde "Outros". E
+"Perdidos", que existe nas regras, sai **vazio**.
+
+Isso não é um erro de execução, é o resultado honesto: um conjunto de regras
+escrito à mão sobre quintis deixa buraco, e o buraco aqui é maior que qualquer
+segmento nomeado. Quem usasse esta segmentação para priorizar retenção estaria
+ignorando o maior pedaço da carteira. O caminho para fechar isso é regra derivada
+dos dados em vez de faixa arbitrária — e essa é a fronteira entre este exercício
+e o `churn-predictor`, que modela em vez de segmentar.
+
+Dos 300 contratos, **288 entram no RFM**: 12 nunca tiveram boleto pago, e cliente
+sem pagamento não tem recência, frequência nem valor para medir.
+
+> **Em Risco + Hibernando** somam 111 contratos e **R$ 13.749 de MRR** — um terço
+> da receita mensal com sinal de saída. É o número que justifica a ação.
 
 ---
 
@@ -132,6 +149,9 @@ Cada métrica é cortada em quintis (1–5) e o score é a concatenação dos tr
 pip install -r requirements.txt
 
 python run_eda.py          # EDA ANATEL: lê os agregados, testa H1–H5, exporta figuras
+python run_rfm.py          # RFM: gera a base sintética, segmenta e exporta a figura
+
+# o mesmo RFM, passo a passo e com a variante que lê de banco:
 jupyter notebook notebooks/rfm_analysis.ipynb
 
 # opcional — refaz os agregados a partir da fonte (baixa ~334 MB, gera 2,5 GB)

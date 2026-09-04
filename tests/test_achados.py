@@ -173,3 +173,79 @@ def test_readme_declara_dado_observado_e_nao_sintetico():
         "o cabeçalho ainda anuncia dado sintético"
     )
     assert "ANATEL" in md and ("observad" in md.lower() or "real" in md.lower())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RFM — as afirmações do README viram asserção
+#
+# A tabela de segmentos do README trazia números com "~" que o pipeline NUNCA
+# produziu: dizia 61 "Leais" contra 32 reais, 5.600 de MRR em "Campeões" contra
+# 8.736, listava "Perdidos" com 45 contratos quando o segmento sai vazio, e
+# omitia inteiramente o balde "Outros" — que é o maior bloco de MRR da base.
+# Eram estimativas escritas à mão numa tabela que parecia saída de execução.
+#
+# Estes testes existem para que isso não volte: se o número do README divergir
+# do pipeline, o CI quebra. Mesmo princípio das suítes de market-expansion e
+# sql-analytics-pack.
+# ─────────────────────────────────────────────────────────────────────────────
+import sys as _sys
+from pathlib import Path as _Path
+
+_SRC = _Path(__file__).resolve().parent.parent / "src"
+if str(_SRC) not in _sys.path:
+    _sys.path.insert(0, str(_SRC))
+
+
+def _resumo_rfm():
+    from fibernet import REFERENCE_DATE, gerar_base
+    from rfm import assign_segments, calculate_rfm, score_rfm, segment_summary
+
+    contratos, boletos = gerar_base()
+    rfm = assign_segments(score_rfm(calculate_rfm(contratos, boletos,
+                                                  reference_date=REFERENCE_DATE)))
+    return contratos, boletos, rfm, segment_summary(rfm)
+
+
+def test_base_sintetica_e_reprodutivel():
+    """Mesma semente, mesma base — é o que separa sintético de inventado."""
+    contratos, boletos, _, _ = _resumo_rfm()
+    assert len(contratos) == 300
+    assert len(boletos) == 4398, "o README publica 4.398 boletos"
+    assert int(boletos["paid_at"].notna().sum()) == 4306
+
+
+def test_rfm_cobre_288_dos_300_contratos():
+    """Cliente sem boleto pago não tem R, F nem M — e o README diz isso."""
+    _, _, rfm, _ = _resumo_rfm()
+    assert len(rfm) == 288
+
+
+def test_tabela_de_segmentos_do_readme():
+    _, _, _, resumo = _resumo_rfm()
+    esperado = {
+        "Outros":           (63, 11697),
+        "Campeões":         (54, 8736),
+        "Hibernando":       (73, 8507),
+        "Em Risco":         (38, 5242),
+        "Leais":            (32, 4048),
+        "Potenciais Leais": (28, 3332),
+    }
+    obtido = {r["segment"]: (int(r["clientes"]), round(r["mrr_total"]))
+              for _, r in resumo.iterrows()}
+    assert obtido == esperado
+
+
+def test_o_residual_e_o_maior_bloco_de_mrr():
+    """O achado que o README passou a declarar em vez de esconder."""
+    _, _, _, resumo = _resumo_rfm()
+    maior = resumo.sort_values("mrr_total", ascending=False).iloc[0]
+    assert maior["segment"] == "Outros"
+    assert maior["clientes"] / resumo["clientes"].sum() > 0.20
+
+
+def test_perdidos_sai_vazio():
+    """Existe nas regras e não classifica ninguém — o README declara isso."""
+    from rfm import SEGMENT_RULES
+    _, _, _, resumo = _resumo_rfm()
+    assert "Perdidos" in {r["segment"] for r in SEGMENT_RULES}
+    assert "Perdidos" not in set(resumo["segment"])
